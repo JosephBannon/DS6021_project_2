@@ -1,0 +1,70 @@
+---
+title: "project_2"
+author: "Joseph Bannon"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+Data<-read.csv("kc_house_data.csv", sep=",", header=TRUE)
+set.seed(6021)
+sample.data<-sample.int(nrow(Data), floor(.50*nrow(Data)), replace = F)
+train<-Data[sample.data, ] ##training data
+test<-Data[-sample.data, ] ##test data
+
+```
+
+
+```{r}
+summary(Data)
+```
+```{r}
+boxplot(Data$bedrooms, horizontal=TRUE)
+```
+
+- Bedrooms = 33 seems to be an error
+
+
+```{r}
+
+ids_with_diffs <- Data[duplicated(Data$id) & !duplicated(Data), ]
+Data[Data$id %in% ids_with_diffs$id, ]
+```
+
+- duplicate ids
+
+
+```{r}
+Data[Data$bedrooms==0 & Data$bathrooms==0, ]
+```
+
+- zero bed / zero bath
+
+
+```{r}
+Data[Data$sqft_living == Data$sqft_basement + Data$sqft_above , ]
+```
+
+
+
+
+Variable changes:
+
+```{r}
+str(Data)
+```
+
+
+- sqft_living appears to be the sum of sqft_basement and sqft_above
+
+- need to change date to data 
+
+- Lat and long are not useful since they are appart / zipcode already covers this
+
+- yr_renovated should be a one hot catagorical (mostly zero)
