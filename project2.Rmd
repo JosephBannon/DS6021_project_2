@@ -80,6 +80,8 @@ str(Data)
 - 0 bed 0 bath (data entry)
 
 
+### Houses with mutliple sales 
+
 ```{r}
 library(dplyr)
 
