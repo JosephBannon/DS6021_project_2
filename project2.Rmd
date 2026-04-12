@@ -25,7 +25,7 @@ test<-Data[-sample.data, ] ##test data
 summary(Data)
 ```
 ```{r}
-boxplot(Data$bedrooms, horizontal=TRUE)
+boxplot(Data$sqft_living, horizontal=TRUE)
 ```
 
 - Bedrooms = 33 seems to be an error
@@ -33,15 +33,17 @@ boxplot(Data$bedrooms, horizontal=TRUE)
 
 ```{r}
 
-ids_with_diffs <- Data[duplicated(Data$id) & !duplicated(Data), ]
+ids_with_diffs <- Data[duplicated(Data$date) & !duplicated(Data), ]
 Data[Data$id %in% ids_with_diffs$id, ]
+
+
 ```
 
 - duplicate ids
 
 
 ```{r}
-Data[Data$bedrooms==0 & Data$bathrooms==0, ]
+Data[Data$bathrooms==0, ]
 ```
 
 - zero bed / zero bath
@@ -63,8 +65,78 @@ str(Data)
 
 - sqft_living appears to be the sum of sqft_basement and sqft_above
 
-- need to change date to data 
+- drop sqft_basement and sqft_above, keep the ratio sqft_basement/sqft_living (predictor)
 
-- Lat and long are not useful since they are appart / zipcode already covers this
+- Lat and long are not useful since they are apart / zipcode already covers this  (predictor)
 
-- yr_renovated should be a one hot catagorical (mostly zero)
+- 3 cats for time series yr_renovated (predictor)
+
+- date pull out year / time of year (predictor)
+
+- date: age at time of sale (predictor)
+
+- drop id
+
+- 0 bed 0 bath (data entry)
+
+
+```{r}
+library(dplyr)
+
+dups <-Data %>%
+  group_by(id) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+
+price_change_dups <- dups %>%
+  arrange(id, date) %>%
+  group_by(id) %>%
+  summarise(
+    n_sales       = n(),
+    date_first    = first(date),
+    date_last     = last(date),
+    price_first   = first(price),
+    price_last    = last(price),
+    pct_change    = round((last(price) - first(price)) / first(price) * 100, 1),
+    .groups = "drop"
+  )
+
+dups <- dups %>%
+  group_by(id) %>%
+  rowwise() %>%
+  mutate(not_same = n_distinct(across(-c( price, date)))>1 ) %>%
+  ungroup()
+all(dups$all_same)
+```
+
+```{r}
+
+dup_data_price <-price_change_dups[price_change_dups$date_first == price_change_dups$date_last & price_change_dups$price_first == price_change_dups$price_last, ]
+
+print(paste0("Number of houses with multiple sales (same day and price): ", nrow(dup_data_price)))
+
+print(paste0("Are there any houses with multiple sales (with changes in other columns)? : ", any(dups$not_same)))
+
+print(paste0("Number of houses with multiple sales: ", nrow(price_change_dups)))
+
+remove_ids<-price_change_dups[price_change_dups$pct_change > 100,]$id
+
+print(paste0("Number of houses with multiple sales (price differce greater than 100): ", length(remove_ids)))
+
+price_change_u_100 <- price_change_dups[!(price_change_dups$id %in% remove_ids), ]
+print(paste0("Number of houses with multiple sales (after filtering): ", nrow(price_change_u_100)))
+
+Data <- Data[!(price_change_dups$id %in% remove_ids), ]
+
+```
+
+
+```{r}
+boxplot(price_change_dups$pct_change,  horizontal=TRUE, xlab="Boxplot of percent price change between sales") 
+
+boxplot(price_change_u_100$pct_change,  horizontal=TRUE, xlab="Boxplot of percent price change between sales (filtered < 100%)") 
+```
+
+In the above box plots we can see that there are 176 houses with multiple sales in the 1 year of data collection (May 2014-May 2015). Since these rows are technically not duplicates as they have different dates and prices, they are technically valid but are likely to cause issues with a regression model as price is different but all predictors are the same. Looking at the first boxplot above, you can see there are many houses with increases in price between the first and last sale. To limit the outliers included in these duplicate sales, we will remove houses with a greater than 100% increase in price between sales. This removes 21 houses from the dataset.
+
