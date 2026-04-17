@@ -34,7 +34,6 @@ boxplot(Data$sqft_living, horizontal=TRUE)
 ```{r}
 
 ids_with_diffs <- Data[duplicated(Data$date) & !duplicated(Data), ]
-Data[Data$id %in% ids_with_diffs$id, ]
 
 
 ```
@@ -42,16 +41,11 @@ Data[Data$id %in% ids_with_diffs$id, ]
 - duplicate ids
 
 
-```{r}
-Data[Data$bathrooms==0, ]
-```
+
 
 - zero bed / zero bath
 
 
-```{r}
-Data[Data$sqft_living == Data$sqft_basement + Data$sqft_above , ]
-```
 
 
 
@@ -220,7 +214,7 @@ summary_table <- house %>%
     count = n()
   ) %>%
   arrange(median_price)
-summary_table
+
 ```
 
 ```{r}
@@ -237,7 +231,6 @@ house <- house[house$diff_yr_sale_yr_built > 0,]
 house_clean <- house
 house_clean[, c("yr_renovated", "date", "lat", "long", "diff_yr_sold_yr_reno", "sqft_above", "sqft_basement", "yr_built")] <- list(NULL)
  
-house_clean
 ```
 
 
