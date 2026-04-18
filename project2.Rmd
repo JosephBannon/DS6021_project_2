@@ -244,8 +244,6 @@ house_clean[, c("yr_renovated", "date", "lat", "long", "diff_yr_sold_yr_reno", "
 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-quant_vars<-house_clean[,c("price","bedrooms", "bathrooms", "sqft_living", "sqft_lot", "floors", "sqft_living15", "sqft_lot15", "diff_yr_sale_yr_built")]
-
 
 price_fmt <- function(x) {
   ifelse(x >= 1e6,
@@ -253,7 +251,9 @@ price_fmt <- function(x) {
          paste0("$", round(x / 1e3), "K"))
 }
 
-house_plots <- house_clean
+house_plots <- na.omit(house_clean[sample.data,])
+quant_vars<-house_plots[,c("price","bedrooms", "bathrooms", "sqft_living", "sqft_lot", "floors", "sqft_living15", "sqft_lot15", "diff_yr_sale_yr_built")]
+
 ```
 
 ## Distribution of Price (response variable)
@@ -262,6 +262,7 @@ house_plots <- house_clean
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
 library(ggplot2)
+house_plots$price
 mean <- mean(house_plots$price)
 median <- median(house_plots$price)
 
