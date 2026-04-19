@@ -13,11 +13,6 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 Data<-read.csv("kc_house_data.csv", sep=",", header=TRUE)
-set.seed(6021)
-sample.data<-sample.int(nrow(Data), floor(.50*nrow(Data)), replace = F)
-train<-Data[sample.data, ] ##training data
-test<-Data[-sample.data, ] ##test data
-
 ```
 
 
@@ -238,6 +233,13 @@ house_clean[, c("yr_renovated", "date", "lat", "long", "diff_yr_sold_yr_reno", "
 
 
 
+```{r}
+set.seed(6021)
+sample.data<-sample.int(nrow(Data), floor(.50*nrow(Data)), replace = F)
+train<-house_clean[sample.data, ] ##training data
+test<-house_clean[-sample.data, ] ##test data
+
+```
 
 
 # Section 4 
@@ -251,7 +253,7 @@ price_fmt <- function(x) {
          paste0("$", round(x / 1e3), "K"))
 }
 
-house_plots <- na.omit(house_clean[sample.data,])
+house_plots <- train
 quant_vars<-house_plots[,c("price","bedrooms", "bathrooms", "sqft_living", "sqft_lot", "floors", "sqft_living15", "sqft_lot15", "diff_yr_sale_yr_built")]
 
 ```
@@ -262,7 +264,6 @@ quant_vars<-house_plots[,c("price","bedrooms", "bathrooms", "sqft_living", "sqft
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
 library(ggplot2)
-house_plots$price
 mean <- mean(house_plots$price)
 median <- median(house_plots$price)
 
