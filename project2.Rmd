@@ -314,13 +314,6 @@ With the log scaling, the price is distribution is much less right skewed and is
 ## Single variable plots
 
 
-
-
-### Quantitative predictors
-
-
-
-
 Firstly, we will be getting a correlation of all the quantitative variables against price to see which predictors look the most promising.
 
 
@@ -580,7 +573,6 @@ The visualization "Scatter plot of price ($) vs diff_yr_sale_yr_built (yrs)" sho
 
 
 
-### Qualitative Predictors
 
 
 
