@@ -779,7 +779,7 @@ ggplot(house_plots_wv, aes(x = view_label, y = price_log, fill = Waterfront)) +
 ```
 
 
-The "Boxplot of price by view and waterfront" shows that the affect of view on price may be a result of more "Waterfront" class observation correlating with higher values of view. This is due to the "Waterfront" classes showing a higher prices in the View 2, 3 and 4 class where as the "No waterfront" class has less split in price over the view classes. This can indicate that an interaction is may be useful between view and waterfront, or that dropping view is sufficent depending on our regression goals.
+The "Boxplot of price by view and waterfront" shows that the affect of view on price may be a result of more "Waterfront" class observation correlating with higher values of view. This is due to the "Waterfront" classes showing a higher prices in the View 2, 3 and 4 class where as the "No waterfront" class has less split in price over the view classes. This can indicate that an interaction is may be useful between view and waterfront, or that dropping view is sufficient depending on our regression goals.
 
 
 # Section 6
