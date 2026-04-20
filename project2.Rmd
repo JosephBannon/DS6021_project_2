@@ -327,14 +327,14 @@ The predictor with the highest for price is sqft_living, followed by sqft_living
 
 
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=6, fig.width=6}
 library(GGally)
-#GGally::ggpairs(quant_vars) 
+GGally::ggpairs(quant_vars) 
 
 ```
 
 
-Looking at the full correlation matrix between all predictors, the only predictor pairs that are highly correlated ( > .75) are sqft_living/sqft_living15 and sqft_lot/sqft_lot15. These variables may introduce mutlicolinearity into our linear model and we may choose to drop one of each pair in our modeling section.
+Looking at the full correlation matrix between all predictors, the only predictor pairs that are highly correlated ( > .75) are sqft_living/sqft_living15 and sqft_living/bathrooms These variables may introduce mutlicolinearity into our linear model and we may choose to drop one of each pair in our modeling section.
 
 
 
@@ -369,7 +369,7 @@ gridExtra::grid.arrange(p1, p2, ncol= 1, nrow = 2)
 ```
 
 
-The "Scatter plot of price vs sqft_living" indicates a linear relationship between without transformations between the variables. However, the variance of both variables seems to increase with price and sqft_living resulting in greater residuals between regression line and the observations. In the plot "Scatter plot of log(price) vs log(sqft_living)", I log transform both variables to stabilize the variance over sqft_living. This improves the visualization and shows a much cleaner linear relationship between log(price) and logs(sqft_living) with a more constant variance.  
+The "Scatter plot of price vs sqft_living" indicates a linear relationship between sqft_living and price  without transformations between the variables. However, the variance of both variables seems to increase with price and sqft_living resulting in greater residuals between regression line and the observations. In the plot "Scatter plot of log(price) vs log(sqft_living)", I log transform both variables to stabilize the variance over sqft_living. This improves the visualization and shows a much cleaner linear relationship between log_10(price) and log_10(sqft_living) with a more consistent variance.  
 
 
 The second highest correlated predictor is sqft_living15. We will apply a similar technique to this visualization.
@@ -401,9 +401,9 @@ gridExtra::grid.arrange(p1, p2, ncol= 1, nrow = 2)
 
 
 
-The "Scatter plot of price vs sqft_living15" shows a similar pattern to the "Scatter plot of price vs sqft_living" with increasing variance as sqft_living15 increases. Again a log transformation of price and sqft_living15 results in a cleaner linear relationship between log(price) and logs(sqft_living15) with a more constant variance. However, it is important to note that sqft_living15 plots have higher variance in general than sqft_living with more outlier, as can be seen by the lighter grey sections of the plot that are more prevelant in the sqft_living15 plot.
+The "Scatter plot of price vs sqft_living15" shows a similar pattern to the "Scatter plot of price vs sqft_living" with increasing variance as sqft_living15 increases. Again a log transformation of price and sqft_living15 results in a clearer linear relationship between log_10(price) and log_10(sqft_living15) with a more consistent variance. However, it is important to note that sqft_living15 plots have higher variance in general than sqft_living, as can be seen by the lighter grey sections of the plot that are more prevalent in the sqft_living15 plot.
 
-\newpage
+
 
 ### bedrooms, bathrooms and floors
 
@@ -444,7 +444,7 @@ gridExtra::grid.arrange(p1, p2, p3, ncol= 2, nrow = 2)
 ```
 
 
-The scatter plots of bedrooms, bathrooms and floors confirms that they have medium correlation with price as there are high residuals between the regression line and observations but there is still a clear linear relationship with price present for each predictor. Additionally, after log transforming price, the variance remains relatively constant. The order of magnitude of slopes of the regression lines goes from bathrooms (largest) to bedrooms and then floors. This indicates that additional bathrooms may have a greater affect on price than the other predictors.
+The scatter plots of bedrooms, bathrooms and floors confirms that they have medium correlation with price as there are high residuals between the regression line and observations but there is still a clear linear relationship present between each predictor and price. Additionally, after a log transformation of price, the variance remains relatively constant. The order of magnitude of slopes of the regression lines goes from bathrooms (largest) to bedrooms and then floors. This indicates that additional bathrooms may have a greater affect on price than the other predictors.
 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
@@ -478,12 +478,11 @@ gridExtra::grid.arrange(p1, p2, p3, layout_matrix = lay)
 
 
 
-The violin plots of bedrooms, bathrooms and floors agrees with the scatter plots of these predictors. The areas of higher density increase in price as the predictors increases. However, there is still a lot of overlap in the overall distribution of each predictors at neighboring levels indicating a medium correlation with price. This observation is especially true for floors as high density areas does not seem to increase much with price. This gives us indication that the relationship between floors and price may not be statistically significant and we may drop this variable when we are doing regression modeling in section 5.
+The violin plots of bedrooms, bathrooms and floors agrees with the scatter plots of these predictors. The areas of higher density increase in price for each predictor as they increase. However, there is still a lot of overlap in the overall distribution of each predictors at neighboring levels indicating a medium correlation with price. This observation is especially true for floors as high density areas for different level do not seem to vary much with price. This gives us indication that the relationship between floors and price may not be statistically significant and we may drop this variable when we are doing regression modeling in section 5.
 
 
 
 ### sqft_lot and sqft_lot15
-
 
 
 
@@ -534,7 +533,7 @@ gridExtra::grid.arrange(p1, p3,p2, p4, ncol= 2, nrow = 2)
 
 ```
 
-The "Scatter plot of price vs sqft_lot" does not indicates a strong linear relationship between without transformations between the variables due to the high variance in price atlow sqft_lot values. However, after a log transform of both variables the variance stabilizes somewhat and produces a vizualation with a clearer linear relationship between log(sqft_lot) and log(price). However, the variance is still higher in the middle section of sqft_lot than the two extermes in the plot. Noticeably, the plots between log(price) vs log(sqft_lot) and log(sqft_lot_15) have very similar variance and residual patterns unlike the different sqft_living and sqft_living15 plots. 
+The "Scatter plot of price vs sqft_lot" does not indicates a strong linear relationship between without transformations between the variables due to the high variance in price at low sqft_lot values. However, after a log transform of both variables the variance stabilizes somewhat and produces a visualization with a clearer linear relationship between log(sqft_lot) and log(price). However, the variance is still higher in the middle section of sqft_lot than the two extremes in the plot. Noticeably, the plots between log(price) vs log(sqft_lot) and log(sqft_lot_15) have very similar variance and residual patterns unlike the different sqft_living and sqft_living15 plots, suggesting houses of similar lot sizes tend to group together with respect to price. 
 
 
 
@@ -670,13 +669,12 @@ gridExtra::grid.arrange(p1, p2, p3, p4)
 ```
 
 
-The violin plots of zip4_class, waterfront, view and season also show differences for some of the predictors related to price. The zip4_class does show a small increase in median price as the factor level increase, though there is still a lot of overlap between each distribution. For waterfront, there is a clear impact of waterfront = 1 leading to an increase in price. Additionally, for view there is an impact of view = 4 median price being higher and  view = 0 median price being lower. There does not seem to be a difference in "off season" and "peak season" price. The visualizations of waterfront and view suggest a regression tree can find a split on waterfront = 1 and view = 0 / view = 4 to predict price. There does not seem to be a difference in "off season" and "peak season" price, so this variable will likely be dropped.
-
+The violin plots of zip4_class, waterfront, view and season also show differences for some of the predictors related to price. The zip4_class does show a small increase in median price as the factor level increase, though there is still a lot of overlap between each distribution. For waterfront, there is a clear impact of waterfront = 1 leading to an increase in price. Additionally, for view there is an impact of view = 4 median price being higher and  view = 0 median price being lower while the other views have similar median prices. The visualizations of waterfront and view suggest a regression tree can find a split on waterfront = 1 and view = 0 / view = 4 to predict price. There does not seem to be a difference in "off season" and "peak season" price , so this variable will likely be dropped.
 
 ## Multivariate plots
 
 
-For the multivariate plots, the strategy was used was split the sqft_living and  sqft_lot vs price plots by the significant categorical variables found in single variable plots (i.e. bedrooms, bathrooms, view and waterfront). Additionally, we are ignoring sqft_living15 and sqft_lot15 as these plots are very similar to the sqft_living and  sqft_lot plots and this visualization would be redundant.
+For the multivariate plots, the strategy used was to split the sqft_living and  sqft_lot vs price plots by the significant categorical variables found in single variable plots (i.e. bedrooms, bathrooms, view and waterfront). Additionally, we are ignoring sqft_living15 and sqft_lot15 as these plots are very similar to the sqft_living and sqft_lot plots and this visualization would be redundant.
 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
@@ -755,10 +753,10 @@ gridExtra::grid.arrange(p1, p2)
 ```
 
 
-The scatter plots of log(sqft_living) and log(sqft_lot) vs price colored by waterfront also show interesting patterns. For the sqft_living plot, the "waterfront" class shows a clear increase in the intercept and slope of the regression line indicating it has a strong affect on price.
+The scatter plots of log(sqft_living) and log(sqft_lot) vs price colored by waterfront also show interesting patterns. For the sqft_living plot, the "waterfront" class shows a clear increase in the intercept and slope of the regression line indicating it has a strong affect on price, especailly for larger sqft_living sizes.
 
 
-However for the sqft_lot plot, we see the oppisite affect where the slope almost becomes negative in the "waterfront" class vs "No waterfront". However, the regression line still has an intercept above the "No waterfront" class should the "waterfront" class overall has a larger price. Potentially, it could be useful to explore an interaction between sqft_living/sqft_lot and waterfront in a linear regression model. 
+However for the sqft_lot plot, we see the opposite affect where the slope almost becomes negative in the "waterfront" class vs "No waterfront". However, the regression line still has an intercept above the "No waterfront" class should the "waterfront" class overall has a larger price. Potentially, it could be useful to explore an interaction between sqft_living/sqft_lot and waterfront in a linear regression model. 
 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
@@ -779,7 +777,7 @@ ggplot(house_plots_wv, aes(x = view_label, y = price_log, fill = Waterfront)) +
 ```
 
 
-The "Boxplot of price by view and waterfront" shows that the affect of view on price may be a result of more "Waterfront" class observation correlating with higher values of view. This is due to the "Waterfront" classes showing a higher prices in the View 2, 3 and 4 class where as the "No waterfront" class has less split in price over the view classes. This can indicate that an interaction is may be useful between view and waterfront, or that dropping view is sufficient depending on our regression goals.
+The "Boxplot of price by view and waterfront" shows that the affect of view on price may be a result of more "Waterfront" class observation correlating with higher values of view. This is due to the "Waterfront" classes showing a higher prices in the View 2, 3 and 4 class where as the "No waterfront" class has less split in price over the view classes. This can indicate that an interaction is may be useful between view and waterfront, or that dropping view is sufficient depending on our regression model goals.
 
 
 # Section 6
@@ -949,7 +947,7 @@ gridExtra::grid.arrange(p1, p2,p3)
 ```
 
 
-The bar plots and density plots for bathrooms, bedrooms and floors indicates the varied nature of these predictors with respect to quality. The bedrooms stacked barplot shows that the higher number of bedrooms, the higher percentage of "good quality" houses have that number of bedrooms compared to "not good quality". This indicates a linear relationship with number of bedrooms and percent chance "good quality"  that could be used in the logistic regression model. In contrast, the barplot of floors by quality does not show a relationship between number of floors and percentage of "good quality". The histogram of bathrooms colored by quality also does not shows a significant difference in between the distribution of "good quality" and "not good quality" homes over bathrooms, except homes that have 1 bathroom have are high density "not good quality", which can be a useful split in the tree classification.
+The bar plots and density plots for bathrooms, bedrooms and floors indicates the varied nature of these predictors with respect to quality. The bedrooms stacked bar plot shows that the higher number of bedrooms, the higher percentage of "good quality" houses have that number of bedrooms compared to "not good quality". This indicates a linear relationship with number of bedrooms and percent "good quality" that could be used in the logistic regression model. In contrast, the bar plot of floors by quality does not show a relationship between number of floors and percentage of "good quality". The histogram of bathrooms colored by quality also does not shows a significant difference in between the distribution of "good quality" and "not good quality" homes over bathrooms, except homes that have 1 bathroom have are high density "not good quality", which can be a useful split in the tree classification.
 
 
 ### zip4_class, renovation group, season, diff_yr_sale_yr_built
@@ -1044,7 +1042,7 @@ gridExtra::grid.arrange(p1, p2,p3, p4)
 
 ```
 
-The "Bar plot of zip4_class by quality" shows a general postive correlation with the higher zipcode classes having higher percent of "good quality". The "Density plot of diff_yr_sale_yr_built (yrs) colored by quality" also shows a high density spike around 30 - 40 yrs which indicates a potential signal for a model to discover, but the distributions are still pretty similar so that may not be feasible. The bar plots for renovation group and season show not discernible difference in percent quality, so these predictors are likely to be dropped in modeling.
+The "Bar plot of zip4_class by quality" shows a general postive correlation with the higher zipcode classes having higher percent of "good quality". The "Density plot of diff_yr_sale_yr_built (yrs) colored by quality" also shows a high density spike around 30 - 40 yrs which indicates a potential signal for a model to discover, but the distributions are still pretty similar so that may not be feasible. The bar plots for renovation group and season do not show discernible difference in percent quality, so these predictors are likely to be dropped in modeling.
 
 ### price
 
@@ -1133,7 +1131,7 @@ p3 <- ggplot(house_plots %>% filter(bedrooms <= 6),
 p3
 ```
 
-The plots above of log(price) vs log(price) faceted by bedroom show that "good quality" houses have larger value for intercept over "not good quality" houses. Therefore, we expect good quality houses to have higher price for the same sqft_living value. The magnitude of slope varies over bedroom plots, but this may be due to lack of amount of "good quality" house at higher bedroom sizes.
+The plots above of log(price) vs log(sqft_living) faceted by bedroom show that "good quality" houses have larger value for intercept over "not good quality" houses. Therefore, we expect good quality houses to have higher price for the same sqft_living value. The magnitude of slope varies over bedroom plots, but this may be due to lack of amount of "good quality" house at higher bedroom sizes.
 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
@@ -1170,4 +1168,4 @@ p4 <- ggplot(bubble_df,
 p4
 ```
 
-The bubble scatter plot above shows the difference in median log(price) over bedrooms with bubble size corresponding to median log(sqft_living15). The log(sqft_living15) has a clear impact on the price of "good quality" where large difference in median log(sqft_living15) correspond with larger distance between This indicates that log(sqft_living15) has significant impact on the house being "good quality". The log(price) also has an impact since the  "good quality" houses have a higher median price over all bedroom classes, but it less pronounced than log(sqft_living15). This is espcially apperant with the 8 bedroom houses. 
+The bubble scatter plot above shows the difference in median log(price) over bedrooms with bubble size corresponding to median log(sqft_living15). The log(sqft_living15) has a clear impact on the price of "good quality" where large difference in median log(sqft_living15) correspond with larger distance between This indicates that log(sqft_living15) has significant impact on the house being "good quality". The log(price) also has an impact since the  "good quality" houses have a higher median price over all bedroom classes, but it less pronounced than log(sqft_living15). This is especially apparent with the 8 bedroom houses. 
