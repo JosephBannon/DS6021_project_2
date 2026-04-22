@@ -69,69 +69,8 @@ str(Data)
 - 0 bed 0 bath (data entry)
 
 
-### Houses with mutliple sales 
 
-```{r}
-library(dplyr)
-
-dups <-Data %>%
-  group_by(id) %>%
-  filter(n() > 1) %>%
-  ungroup()
-
-
-price_change_dups <- dups %>%
-  arrange(id, date) %>%
-  group_by(id) %>%
-  summarise(
-    n_sales       = n(),
-    date_first    = first(date),
-    date_last     = last(date),
-    price_first   = first(price),
-    price_last    = last(price),
-    pct_change    = round((last(price) - first(price)) / first(price) * 100, 1),
-    .groups = "drop"
-  )
-
-dups <- dups %>%
-  group_by(id) %>%
-  rowwise() %>%
-  mutate(not_same = n_distinct(across(-c( price, date)))>1 ) %>%
-  ungroup()
-all(dups$all_same)
-```
-
-```{r}
-
-dup_data_price <-price_change_dups[price_change_dups$date_first == price_change_dups$date_last & price_change_dups$price_first == price_change_dups$price_last, ]
-
-print(paste0("Number of houses with multiple sales (same day and price): ", nrow(dup_data_price)))
-
-print(paste0("Are there any houses with multiple sales (with changes in other columns)? : ", any(dups$not_same)))
-
-print(paste0("Number of houses with multiple sales: ", nrow(price_change_dups)))
-
-remove_ids<-price_change_dups[price_change_dups$pct_change > 100,]$id
-
-print(paste0("Number of houses with multiple sales (price differce greater than 100): ", length(remove_ids)))
-
-price_change_u_100 <- price_change_dups[!(price_change_dups$id %in% remove_ids), ]
-print(paste0("Number of houses with multiple sales (after filtering): ", nrow(price_change_u_100)))
-
-Data <- Data[!(price_change_dups$id %in% remove_ids), ]
-
-```
-
-
-```{r}
-boxplot(price_change_dups$pct_change,  horizontal=TRUE, xlab="Boxplot of percent price change between sales") 
-
-boxplot(price_change_u_100$pct_change,  horizontal=TRUE, xlab="Boxplot of percent price change between sales (filtered < 100%)") 
-```
-
-In the above box plots we can see that there are 176 houses with multiple sales in the 1 year of data collection (May 2014-May 2015). Since these rows are technically not duplicates as they have different dates and prices, they are technically valid but are likely to cause issues with a regression model as price is different but all predictors are the same. Looking at the first boxplot above, you can see there are many houses with increases in price between the first and last sale. To limit the outliers included in these duplicate sales, we will remove houses with a greater than 100% increase in price between sales. This removes 21 houses from the dataset.
-
-# Data cleaning
+# Section 3
 
 ```{r}
 house<-read.csv("kc_house_data.csv", sep=",", header=TRUE)
@@ -219,6 +158,67 @@ house <- house[house$bedrooms > 0, ]
 house <- house[house$diff_yr_sale_yr_built > 0,]
 ```
 
+### Houses with mutliple sales 
+
+```{r}
+library(dplyr)
+
+dups <-Data %>%
+  group_by(id) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+
+price_change_dups <- dups %>%
+  arrange(id, date) %>%
+  group_by(id) %>%
+  summarise(
+    n_sales       = n(),
+    date_first    = first(date),
+    date_last     = last(date),
+    price_first   = first(price),
+    price_last    = last(price),
+    pct_change    = round((last(price) - first(price)) / first(price) * 100, 1),
+    .groups = "drop"
+  )
+
+dups <- dups %>%
+  group_by(id) %>%
+  rowwise() %>%
+  mutate(not_same = n_distinct(across(-c( price, date)))>1 ) %>%
+  ungroup()
+all(dups$all_same)
+```
+
+```{r}
+
+dup_data_price <-price_change_dups[price_change_dups$date_first == price_change_dups$date_last & price_change_dups$price_first == price_change_dups$price_last, ]
+
+print(paste0("Number of houses with multiple sales (same day and price): ", nrow(dup_data_price)))
+
+print(paste0("Are there any houses with multiple sales (with changes in other columns)? : ", any(dups$not_same)))
+
+print(paste0("Number of houses with multiple sales: ", nrow(price_change_dups)))
+
+remove_ids<-price_change_dups[price_change_dups$pct_change > 100,]$id
+
+print(paste0("Number of houses with multiple sales (price differce greater than 100): ", length(remove_ids)))
+
+price_change_u_100 <- price_change_dups[!(price_change_dups$id %in% remove_ids), ]
+print(paste0("Number of houses with multiple sales (after filtering): ", nrow(price_change_u_100)))
+
+Data <- Data[!(price_change_dups$id %in% remove_ids), ]
+
+```
+
+
+```{r}
+boxplot(price_change_dups$pct_change,  horizontal=TRUE, xlab="Boxplot of percent price change between sales") 
+
+boxplot(price_change_u_100$pct_change,  horizontal=TRUE, xlab="Boxplot of percent price change between sales (filtered < 100%)") 
+```
+
+In the above box plots we can see that there are 176 houses with multiple sales in the 1 year of data collection (May 2014-May 2015). Since these rows are technically not duplicates as they have different dates and prices, they are technically valid but are likely to cause issues with a regression model as price is different but all predictors are the same. Looking at the first boxplot above, you can see there are many houses with increases in price between the first and last sale. To limit the outliers included in these duplicate sales, we will remove houses with a greater than 100% increase in price between sales. This removes 21 houses from the dataset.
 
 
 ```{r}
@@ -780,6 +780,166 @@ ggplot(house_plots_wv, aes(x = view_label, y = price_log, fill = Waterfront)) +
 The "Boxplot of price by view and waterfront" shows that the affect of view on price may be a result of more "Waterfront" class observation correlating with higher values of view. This is due to the "Waterfront" classes showing a higher prices in the View 2, 3 and 4 class where as the "No waterfront" class has less split in price over the view classes. This can indicate that an interaction is may be useful between view and waterfront, or that dropping view is sufficient depending on our regression model goals.
 
 
+# Section 5
+
+
+## Linear Regression
+
+
+## Regression Tree - predict price 
+
+
+##### Base Regression Tree
+
+```{r}
+tree_reg = tree(price~.-price,  train)
+par(mar = c(1, 1, 1, 1))
+plot(tree_reg)
+text(tree_reg, pretty = 0)
+summary(tree_reg)
+```
+
+###### Predictive Test
+
+```{r} 
+# calcuate MSE for base Reg Tree 
+
+yhat_tree_reg =  predict(tree_reg, newdata = test[-1])
+mse_tree_reg = mean((yhat_tree_reg - test$price)^2)
+cat("MSE for Tree-Based Regression Model: ",comma(mse_tree_reg))
+```
+
+
+
+##### Pruned Regression Tree
+
+```{r}
+#set.seed(1)
+cv_tree_reg = cv.tree(tree_reg)
+plot(cv_tree_reg$size, cv_tree_reg$dev, type = "b")
+```
+
+The most complex tree is selected by cross validation. according to the text (pg 357) we can also prune using the following approach:
+
+
+
+
+```{r}
+tree_reg_prune = prune.tree(tree_reg, best = 5)
+plot(tree_reg_prune)
+text(tree_reg_prune, pretty =  0 )
+```
+
+
+###### Predictive Test
+
+```{r}
+yhat_tree_reg_prune =  predict(tree_reg_prune, newdata = test[-1])
+mse_tree_reg_prune = mean((yhat_tree_reg_prune - test$price)^2)
+cat("MSE for Pruned verison of Tree-Based Regresion model: ", dollar(mse_tree_reg_prune))
+```
+
+
+##### Bagging Regression
+
+```{r}
+
+#set.seed(2) 
+##bagging is special case of random forest when mtry = number of predictors
+
+preds = ncol(train) -1 
+bag_reg = randomForest::randomForest(price~.-price, data=train, mtry=preds, importance=TRUE)
+bag_reg
+
+```
+Note: Below is the faster version that runs better on apple silicon split cores. The results of the two models seem very similar. I am able to use this package to build the random forest model as well. I just want to confirm that this is okay to use before I implement it globally. 
+
+```{r}
+registerDoMC(cores = 4)  # experiment with this number
+preds = ncol(train) -1 
+#bag_class = randomForest::randomForest(price~.-quality, data=train, mtry=preds, importance=TRUE)
+
+bag_reg2 <- ranger(
+  price ~ .,
+  data = train,
+  importance = "permutation",
+  mtry = preds,   
+  num.threads = 4 
+)
+bag_reg2
+
+```
+
+
+###### Predictive Test
+
+
+```{r}
+yhat_bag_reg = predict(bag_reg, newdata = test[-1])
+
+mse_bag_reg = mean((yhat_bag_reg - test$price)^2)
+cat("Test MSE for Bagging  Model: ",dollar(mse_bag_reg))
+```
+
+Version 2: 
+
+
+```{r}
+yhat_bag_reg2 = predict(bag_reg2, data  = test[-1])$predictions
+
+mse_bag_reg2 = mean((yhat_bag_reg2 - test$price)^2)
+cat("Test MSE for Bagging  Model 2: ",dollar(mse_bag_reg2))
+```
+
+
+
+##### Random Forest Regression
+
+
+```{r}
+rf_reg = randomForest::randomForest(price~.-price, data=train, mtry=3, importance=TRUE)
+rf_reg
+```
+
+
+```{r}
+randomForest::varImpPlot(rf)
+```
+
+
+###### Predictive Test
+
+
+```{r}
+yhat_rf_reg = predict(rf_reg, newdata = test[-1])
+
+mse_rf = mean((yhat_rf_reg - test$price)^2)
+cat("Test MSE for Random Forrest  Model: ",dollar(mse_rf))
+```
+
+
+##### Boosting Regression
+
+```{r}
+#set.seed(2)
+boost_reg = gbm::gbm(price~.-price, data=train, distribution="gaussian", shrinkage = 0.1, n.trees=500)
+
+summary(boost_reg)
+```
+
+
+###### Predictive Test
+
+```{r}
+yhat_boost_reg = predict(boost_reg, newdata = test[-1])
+
+mse_boost_reg = mean((yhat_boost_reg - test$price)^2)
+cat("Test MSE for Boost  Model: ", dollar(mse_boost_reg))
+```
+
+
+
+
 # Section 6
 
 
@@ -1169,3 +1329,174 @@ p4
 ```
 
 The bubble scatter plot above shows the difference in median log(price) over bedrooms with bubble size corresponding to median log(sqft_living15). The log(sqft_living15) has a clear impact on the price of "good quality" where large difference in median log(sqft_living15) correspond with larger distance between This indicates that log(sqft_living15) has significant impact on the house being "good quality". The log(price) also has an impact since the  "good quality" houses have a higher median price over all bedroom classes, but it less pronounced than log(sqft_living15). This is especially apparent with the 8 bedroom houses. 
+
+
+# Section 7
+
+## Logistic Regression
+
+## Classification Tree - predict quality 
+
+
+```{r}
+house_clean = house
+house_clean$quality <- factor(ifelse(house_clean$condition > 3 & house_clean$grade > 7, 
+                                      "good_quality", 
+                                      "not_good_quality"))
+house_clean[, c("condition","grade")] <- list(NULL)
+house_clean[, c("id","yr_renovated", "date", "lat", "long", "zipcode", "diff_yr_sold_yr_reno", "sqft_above", "sqft_basement", "yr_built", "month", "zip4")] <- list(NULL)
+factorCols <- c("floors", "waterfront", "view","season","renovation_group","zip4_class","quality")
+house_clean[factorCols] =  lapply(house_clean[factorCols], as.factor)
+sample.data<-sample.int(nrow(house_clean), floor(.50*nrow(house_clean)), replace = F)
+train = house_clean[sample.data,]
+train = as.data.frame(train)
+test = house_clean[-sample.data,]
+test = as.data.frame(test)
+```
+
+
+##### Base Classification Tree
+
+```{r}
+
+tree_class = tree(quality~.-quality,  train)
+par(mar = c(1, 1, 1, 1))
+plot(tree_class)
+text(tree_class, pretty = 0)
+summary(tree_class)
+```
+###### Predictive Test
+
+```{r}
+preds = predict(tree_class, newdata = test[-15], type= "class")
+table(preds, test$quality)
+tree_class_error = 1-mean(preds==test$quality)
+cat("Error Rate for Tree-Based Classification Model: ",percent(tree_class_error))
+
+```
+
+
+##### Pruned Classification Tree
+
+```{r}
+cv_tree_class = cv.tree(tree_class, FUN = prune.misclass)
+plot(cv_tree_class$size, cv_tree_class$dev, type = "b")
+cv_tree_class
+```
+
+Using trees of either 9 or 7 terminal nodes results in 1,291 classification errors, and using a tree with 1 terminal node results in 1,328 classification errors. So our best bet here is to use either 9 or 7 terminal nodes. For the sake of simplicity, I suggest using 7 nodes. 
+
+
+```{r}
+par(mfrow = c(1, 2))
+plot(cv_tree_class$size ,cv_tree_class$dev , type = "b")
+plot(cv_tree_class$k, cv_tree_class$dev , type = "b")
+```
+tried using this plot from the text but i am not sure how useful it is. 
+
+```{r}
+tree_class_prune = prune.tree(tree_class, best = 7)
+plot(tree_class_prune)
+text(tree_class_prune, pretty = 0 )
+```
+
+###### Predictive Test
+
+```{r}
+preds = predict(tree_class_prune, newdata = test[-15], type= "class")
+table(preds, test$quality)
+tree_class_prune_error = 1-mean(preds==test$quality)
+cat("Error Rate for Pruned Tree-Based Classification Model: ",percent(tree_class_prune_error))
+```
+It appears that pruning the tree down to 7 terminal nodes has increased the error rate from 12% to 13%
+
+##### Bagging Classification
+
+
+
+```{r}
+library(doMC)
+library(ranger)
+registerDoMC(cores = detectCores() - 1)  # leaves one core free
+parallel::detectCores()  # M3 Pro has 11-12, M3 Max has 14-16
+registerDoMC(cores = 4)  # experiment with this number
+preds = ncol(train[-15]) -1 
+#bag_class = randomForest::randomForest(price~.-quality, data=train, mtry=preds, importance=TRUE)
+
+bag_class <- ranger(
+  quality ~ .,
+  data = train,
+  #num.trees = 100,
+  mtry = preds,   # use all predictors = bagging
+  num.threads = 4        # adjust based on your core testing
+)
+```
+
+
+###### Predictive Test
+
+```{r}
+preds = predict(bag_class, data = test)
+table(preds$predictions, test$quality)
+bag_class_error = 1-mean(preds$predictions==test$quality)
+cat("Error Rate for Bagging Classification Model: ",percent(bag_class_error))
+```
+
+Here we see the error rate for the bagging model is down to 11% 
+
+
+##### Random Forrest Classification
+
+```{r}
+rf_class <- ranger(
+  quality ~ .,
+  data = train,
+  #num.trees = 100,
+  #mtry = preds,   # use all predictors = bagging
+  num.threads = 4        # adjust based on your core testing
+)
+```
+
+###### Predictive Test
+
+```{r}
+preds = predict(rf_class, data = test)
+table(preds$predictions, test$quality)
+rf_class_error = 1-mean(preds$predictions==test$quality)
+cat("Error Rate for Bagging Classification Model: ",percent(rf_class_error))
+```
+
+Random forrest model has brought the error rate down to 10% 
+
+##### Boosting Classification 
+
+
+```{r}
+
+train <- train %>%
+  mutate(quality = ifelse(quality == "good_quality", 1, 0))
+
+test <- test %>%
+  mutate(quality = ifelse(quality == "good_quality", 1, 0))
+n_trees = 500
+boost_class = gbm::gbm(quality~., data=train, distribution="bernoulli", shrinkage = 0.1, n.trees=n_trees)
+
+summary(boost_reg)
+```
+
+###### Predictive Test
+
+```{r}
+preds = predict(boost_class, data = test)
+probs <- predict(boost_class, newdata = test, n.trees = n_trees, type = "response")
+preds <- ifelse(probs > 0.5, 1, 0)
+table(preds, test$quality)
+
+boost_error <- 1 - mean(preds == test$quality)
+cat("Error Rate for Boosting Classification Model: ", percent(boost_error))
+#rf_class_error = 1-mean(preds$predictions==test$quality)
+#cat("Error Rate for Bagging Classification Model: ",percent(rf_class_error))
+```
+
+This has produced the best error rate thus far, with only 7% of predictions being classified incorrectly. 
+
