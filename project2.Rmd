@@ -1,0 +1,1502 @@
+---
+title: "project_2"
+author: "Joseph Bannon"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+Data<-read.csv("kc_house_data.csv", sep=",", header=TRUE)
+```
+
+
+```{r}
+summary(Data)
+```
+```{r}
+boxplot(Data$sqft_living, horizontal=TRUE)
+```
+
+- Bedrooms = 33 seems to be an error
+
+
+```{r}
+
+ids_with_diffs <- Data[duplicated(Data$date) & !duplicated(Data), ]
+
+
+```
+
+- duplicate ids
+
+
+
+
+- zero bed / zero bath
+
+
+
+
+
+
+Variable changes:
+
+```{r}
+str(Data)
+```
+
+
+- sqft_living appears to be the sum of sqft_basement and sqft_above
+
+- drop sqft_basement and sqft_above, keep the ratio sqft_basement/sqft_living (predictor)
+
+- Lat and long are not useful since they are apart / zipcode already covers this  (predictor)
+
+- 3 cats for time series yr_renovated (predictor)
+
+- date pull out year / time of year (predictor)
+
+- date: age at time of sale (predictor)
+
+- drop id
+
+- 0 bed 0 bath (data entry)
+
+
+
+# Section 3
+
+```{r}
+house<-read.csv("kc_house_data.csv", sep=",", header=TRUE)
+house <- house[,-1]
+```
+
+
+```{r}
+#converting date to yyyy-mm-dd
+house$date <- gsub("T.*", "", house$date)
+house$date <- as.Date(as.character(house$date), format = "%Y%m%d")
+```
+
+```{r}
+house$month <- as.integer(format(house$date, "%m"))
+house$season <- ifelse(house$month %in% c(3,4,5,6,7,8),
+                       "peak season",
+                       "off season")
+```
+
+
+```{r}
+#converting waterfront to factor
+house$waterfront <- as.factor(house$waterfront)
+```
+
+```{r}
+## getting age of house
+house$diff_yr_sale_yr_built <- as.numeric(format(house$date, "%Y")) - house$yr_built
+```
+
+```{r}
+ 
+#grouping together difference between sold date and yr renovated into never renovated, renovated within 15 years, and renovated more than 15 years ago
+house$yr_renovated[house$yr_renovated == 0] <- NA #takes yr_renovated == 0 and assigns it as null
+house$diff_yr_sold_yr_reno <- as.numeric(format(house$date, "%Y")) - house$yr_renovated #finding diff between date sold yr renovated
+house <- house %>%
+  mutate(
+    renovation_group = case_when(
+      is.na(yr_renovated) ~ "never_renovated",        #if yr_renovated null, then never renovated
+      diff_yr_sold_yr_reno < 15 ~ "recently_renovated", #if renovated within 15 years of sale then recently renovated
+      diff_yr_sold_yr_reno >= 15 ~ "old_renovation"   #if renovated 15 years or later then older renovation
+    )
+  )
+house$renovation_group <- as.factor(house$renovation_group)
+ 
+```
+
+
+```{r}
+house$zip4 <- substr(as.character(house$zipcode), 1,4)
+high = c(9807)
+med = c(9811,9800,9810,9806,9819)
+med.high = c(9811,9800,9810,9806,9819)
+med = c(9812,9805,9801,9802,9813)
+med.low = c(9817,9814,9803,9815,9804)
+low = c(9809,9816,9818)
+ 
+ 
+house <- house %>%
+  mutate(zip4_class = case_when(
+    zip4 %in% high ~ "high",
+    zip4 %in% med.high ~ "med-high",
+    zip4 %in% med ~ "medium",
+    zip4 %in% med.low ~ "med-low",
+    zip4 %in% low ~ "low",
+    TRUE ~ "unclassified"
+  ))
+ 
+summary_table <- house %>%
+  group_by(zip4_class) %>%
+  summarise(
+    mean_price = mean(price, na.rm = TRUE),
+    median_price = median(price, na.rm = TRUE),
+    count = n()
+  ) %>%
+  arrange(median_price)
+
+```
+
+```{r}
+house <- house[house$bedrooms <= 10, ]
+house <- house[house$bathrooms > 0,]
+house <- house[house$bedrooms > 0, ]
+house <- house[house$diff_yr_sale_yr_built > 0,]
+```
+
+### Houses with mutliple sales 
+
+```{r}
+library(dplyr)
+
+dups <-Data %>%
+  group_by(id) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+
+price_change_dups <- dups %>%
+  arrange(id, date) %>%
+  group_by(id) %>%
+  summarise(
+    n_sales       = n(),
+    date_first    = first(date),
+    date_last     = last(date),
+    price_first   = first(price),
+    price_last    = last(price),
+    pct_change    = round((last(price) - first(price)) / first(price) * 100, 1),
+    .groups = "drop"
+  )
+
+dups <- dups %>%
+  group_by(id) %>%
+  rowwise() %>%
+  mutate(not_same = n_distinct(across(-c( price, date)))>1 ) %>%
+  ungroup()
+all(dups$all_same)
+```
+
+```{r}
+
+dup_data_price <-price_change_dups[price_change_dups$date_first == price_change_dups$date_last & price_change_dups$price_first == price_change_dups$price_last, ]
+
+print(paste0("Number of houses with multiple sales (same day and price): ", nrow(dup_data_price)))
+
+print(paste0("Are there any houses with multiple sales (with changes in other columns)? : ", any(dups$not_same)))
+
+print(paste0("Number of houses with multiple sales: ", nrow(price_change_dups)))
+
+remove_ids<-price_change_dups[price_change_dups$pct_change > 100,]$id
+
+print(paste0("Number of houses with multiple sales (price differce greater than 100): ", length(remove_ids)))
+
+price_change_u_100 <- price_change_dups[!(price_change_dups$id %in% remove_ids), ]
+print(paste0("Number of houses with multiple sales (after filtering): ", nrow(price_change_u_100)))
+
+Data <- Data[!(price_change_dups$id %in% remove_ids), ]
+
+```
+
+
+```{r}
+boxplot(price_change_dups$pct_change,  horizontal=TRUE, xlab="Boxplot of percent price change between sales") 
+
+boxplot(price_change_u_100$pct_change,  horizontal=TRUE, xlab="Boxplot of percent price change between sales (filtered < 100%)") 
+```
+
+In the above box plots we can see that there are 176 houses with multiple sales in the 1 year of data collection (May 2014-May 2015). Since these rows are technically not duplicates as they have different dates and prices, they are technically valid but are likely to cause issues with a regression model as price is different but all predictors are the same. Looking at the first boxplot above, you can see there are many houses with increases in price between the first and last sale. To limit the outliers included in these duplicate sales, we will remove houses with a greater than 100% increase in price between sales. This removes 21 houses from the dataset.
+
+
+```{r}
+#dropping columns
+house_clean <- house
+house_clean[, c("yr_renovated", "date", "lat", "long", "diff_yr_sold_yr_reno", "sqft_above", "sqft_basement", "yr_built")] <- list(NULL)
+ 
+```
+
+
+
+
+
+
+```{r}
+set.seed(6021)
+sample.data<-sample.int(nrow(Data), floor(.50*nrow(Data)), replace = F)
+train<-house_clean[sample.data, ] ##training data
+test<-house_clean[-sample.data, ] ##test data
+
+```
+
+
+# Section 4 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+price_fmt <- function(x) {
+  ifelse(x >= 1e6,
+         paste0("$", round(x / 1e6, 1), "M"),
+         paste0("$", round(x / 1e3), "K"))
+}
+
+house_plots <- train
+quant_vars<-house_plots[,c("price","bedrooms", "bathrooms", "sqft_living", "sqft_lot", "floors", "sqft_living15", "sqft_lot15", "diff_yr_sale_yr_built")]
+
+```
+
+## Distribution of Price (response variable)
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+library(ggplot2)
+mean <- mean(house_plots$price)
+median <- median(house_plots$price)
+
+stdev <- sd(house_plots$price)
+
+
+density_price <- ggplot(house_plots, aes(x = price)) +
+                  geom_density(fill = "skyblue", color = "black", alpha = 0.7) +
+                  geom_vline(aes(xintercept = mean, color = "mean"), linetype = "solid", size =.75) +
+                  geom_vline(aes(xintercept = median, color = "median"), linetype = "solid", size =.75) +
+                  scale_x_continuous(labels = price_fmt) +
+
+                  geom_vline(aes(xintercept = mean - stdev, color = "std"), linetype = "dashed")+
+                  geom_vline(aes(xintercept = mean + stdev, color = "std"), linetype = "dashed")+
+                  labs(x = "Price ($)", y = "Density", title = "Price ($) Density Plot")  + 
+                  scale_color_manual(name = "Lines", values = c("mean" = "red", "median" = "blue", "std"="red"))
+
+house_plots$price_log <- log(base = 10, house_plots$price)
+mean_log <- mean(house_plots$price_log)
+median_log <- median(house_plots$price_log)
+
+stdev_log <- sd(house_plots$price_log)
+
+density_price_log <- ggplot(house_plots, aes(x = price_log)) +
+                  geom_density(fill = "skyblue", color = "black", alpha = 0.7) +
+                  geom_vline(aes(xintercept = mean_log, color = "mean"), linetype = "solid", size =.75) +
+                  geom_vline(aes(xintercept = median_log, color = "median"), linetype = "solid", size =.75) +
+
+                  geom_vline(aes(xintercept = mean_log - stdev_log, color = "std"), linetype = "dashed")+
+                  geom_vline(aes(xintercept = mean_log + stdev_log, color = "std"), linetype = "dashed")+
+                  labs(x = "log_10(Price)", y = "Density", title = "log_10(Price) Density Plot")  + 
+                  scale_color_manual(name = "Lines", values = c("mean" = "red", "median" = "blue", "std"="red"))
+
+
+
+gridExtra::grid.arrange(density_price, density_price_log, ncol= 1, nrow = 2)
+```
+
+
+
+Looking at the density plot for price, there is a pretty significant right skew of the data given the distance of the prices greater than one standard deviation from mean compared to less than. However, comparing the mean to the median shows a right skewed distribution but not as extreme as the outliers in the data may suggest. Due to this skew, we will log scale the price to make visualizations easier to view.
+
+
+
+With the log scaling, the price is distribution is much less right skewed and is closer to a normal curve. The mean and median are much closer to the peak in the density curve (i.e. mode) and the outliers are much closer to one standard deviation from the mean than before. A slight right skew is still present but is significantly reduced. Additionally, I choose to use log base 10 as this will aid in the interpretations of the visualization involving price.
+
+
+## Single variable plots
+
+
+Firstly, we will be getting a correlation of all the quantitative variables against price to see which predictors look the most promising.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+library(lares)
+corr_var(quant_vars, price) 
+```
+
+
+The predictor with the highest for price is sqft_living, followed by sqft_living15, bathrooms, bedrooms, floors, sqft_lot, sqft_lot15 and diff_yr_sale_yr_built (negative correlation) in order.
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=6, fig.width=6}
+library(GGally)
+GGally::ggpairs(quant_vars) 
+
+```
+
+
+Looking at the full correlation matrix between all predictors, the only predictor pairs that are highly correlated ( > .75) are sqft_living/sqft_living15 and sqft_living/bathrooms These variables may introduce mutlicolinearity into our linear model and we may choose to drop one of each pair in our modeling section.
+
+
+
+### sqft_living and sqft_living15
+
+
+
+Since sqft_living is the highest correlated predictor with price, we will start with this plot.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+
+p1 <- ggplot(house_plots, aes(x = sqft_living, y = price)) +
+  geom_point(alpha=.2) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  scale_y_continuous(labels = price_fmt) +
+  labs(
+    title    = "Scatter plot of price ($) vs sqft_living (ft^2)",
+    x = "sqft_living", y = "price"
+  ) 
+
+house_plots$sqft_living_log<-log(base=10,house_plots$sqft_living)
+p2 <- ggplot(house_plots, aes(x = sqft_living_log, y = price_log)) +
+  geom_point(alpha=.2) +
+  geom_smooth(method = "lm",  se = TRUE) +
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_living)",
+    x = "log_10(sqft_living)", y = "log_10(price)"
+  ) 
+
+gridExtra::grid.arrange(p1, p2, ncol= 1, nrow = 2)
+
+```
+
+
+The "Scatter plot of price vs sqft_living" indicates a linear relationship between sqft_living and price  without transformations between the variables. However, the variance of both variables seems to increase with price and sqft_living resulting in greater residuals between regression line and the observations. In the plot "Scatter plot of log(price) vs log(sqft_living)", I log transform both variables to stabilize the variance over sqft_living. This improves the visualization and shows a much cleaner linear relationship between log_10(price) and log_10(sqft_living) with a more consistent variance.  
+
+
+The second highest correlated predictor is sqft_living15. We will apply a similar technique to this visualization.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+
+p1 <- ggplot(house_plots, aes(x = sqft_living15, y = price)) +
+  geom_point(alpha=.2) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  scale_y_continuous(labels = price_fmt) +
+  labs(
+    title    = "Scatter plot of price ($) vs sqft_living15 (ft^2)",
+    x = "sqft_living15", y = "price"
+  ) 
+
+house_plots$sqft_living15_log<-log(base=10,house_plots$sqft_living15)
+p2 <- ggplot(house_plots, aes(x = sqft_living15_log, y = price_log)) +
+  geom_point(alpha=.2) +
+  geom_smooth(method = "lm",  se = TRUE) +
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_living15)",
+    x = "log_10(sqft_living15)", y = "log_10(price)"
+  ) 
+
+gridExtra::grid.arrange(p1, p2, ncol= 1, nrow = 2)
+
+```
+
+
+
+The "Scatter plot of price vs sqft_living15" shows a similar pattern to the "Scatter plot of price vs sqft_living" with increasing variance as sqft_living15 increases. Again a log transformation of price and sqft_living15 results in a clearer linear relationship between log_10(price) and log_10(sqft_living15) with a more consistent variance. However, it is important to note that sqft_living15 plots have higher variance in general than sqft_living, as can be seen by the lighter grey sections of the plot that are more prevalent in the sqft_living15 plot.
+
+
+
+### bedrooms, bathrooms and floors
+
+
+The predictors bedrooms, bathrooms and floors are quantitative but discrete variables so we will examine both scatter plots and violin plots for each of them.  
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+
+p1 <- ggplot(house_plots, aes(x = bedrooms, y = price_log)) +
+  geom_jitter(width = 0.2, alpha = 0.4) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of log(price) vs bedrooms",
+    x = "bedrooms", y = "log_10(price)"
+  ) 
+
+p2 <- ggplot(house_plots, aes(x = bathrooms, y = price_log)) +
+  geom_point(alpha=.2) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  
+  labs(
+    title    = "Scatter plot of log(price) vs bathrooms",
+    x = "bathrooms", y = "log_10(price)"
+  ) 
+
+p3 <- ggplot(house_plots, aes(x = floors, y = price_log)) +
+  geom_point(alpha=.2) +
+  geom_jitter(width = 0.1, alpha = 0.4) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of log(price) vs floors",
+    x = "floors", y = "log_10(price)"
+  ) 
+
+gridExtra::grid.arrange(p1, p2, p3, ncol= 2, nrow = 2)
+
+```
+
+
+The scatter plots of bedrooms, bathrooms and floors confirms that they have medium correlation with price as there are high residuals between the regression line and observations but there is still a clear linear relationship present between each predictor and price. Additionally, after a log transformation of price, the variance remains relatively constant. The order of magnitude of slopes of the regression lines goes from bathrooms (largest) to bedrooms and then floors. This indicates that additional bathrooms may have a greater affect on price than the other predictors.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+
+p1 <- ggplot(house_plots, aes(x = factor(bedrooms), y = price_log)) +
+  geom_violin(linewidth = 0.5, trim = TRUE, scale = "width") +  
+  labs(
+    title    = "Violin plot of log(price) vs bedrooms",
+    x = "bedrooms", y = "log_10(price)"
+  ) 
+
+p2 <- ggplot(house_plots, aes(x = factor(bathrooms), y = price_log)) +
+  geom_violin(linewidth = 0.5, trim = TRUE, scale = "width") +  
+  
+  labs(
+    title    = "Violin plot of log(price) vs bathrooms",
+    x = "bathrooms", y = "log_10(price)"
+  ) 
+
+p3 <- ggplot(house_plots, aes(x = factor(floors), y = price_log)) +
+  geom_violin(linewidth = 0.5, trim = TRUE, scale = "width") +  
+  labs(
+    title    = "Violin plot of log(price) vs floors",
+    x = "floors", y = "log_10(price)"
+  ) 
+lay <- rbind(c(1,3),
+             c(2,2))
+gridExtra::grid.arrange(p1, p2, p3, layout_matrix = lay)
+
+```
+
+
+
+The violin plots of bedrooms, bathrooms and floors agrees with the scatter plots of these predictors. The areas of higher density increase in price for each predictor as they increase. However, there is still a lot of overlap in the overall distribution of each predictors at neighboring levels indicating a medium correlation with price. This observation is especially true for floors as high density areas for different level do not seem to vary much with price. This gives us indication that the relationship between floors and price may not be statistically significant and we may drop this variable when we are doing regression modeling in section 5.
+
+
+
+### sqft_lot and sqft_lot15
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+
+p1 <- ggplot(house_plots, aes(x = sqft_lot, y = price)) +
+  geom_point(alpha=.2) +
+    scale_y_continuous(labels = price_fmt) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of price ($) vs sqft_lot (ft^2)",
+    x = "sqft_lot (ft^2)", y = "price ($)"
+  ) +
+  theme_bw(base_size = 10)
+
+house_plots$sqft_lot_log<-log(base=10,house_plots$sqft_lot)
+p2 <- ggplot(house_plots, aes(x = sqft_lot_log, y = price_log)) +
+  geom_point(alpha=.2) +
+  geom_smooth(method = "lm",  se = TRUE) +
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_lot)",
+    x = "log_10(sqft_lot)", y = "log_10(price)"
+  ) +
+  theme_bw(base_size = 10)
+
+p3 <- ggplot(house_plots, aes(x = sqft_lot15, y = price)) +
+  geom_point(alpha=.2) +
+    scale_y_continuous(labels = price_fmt) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of price ($) vs sqft_lot15 (ft^2)",
+    x = "sqft_lot15 (ft^2)", y = "price ($)"
+  ) +
+  theme_bw(base_size = 10)
+
+house_plots$sqft_lot15_log<-log(base=10,house_plots$sqft_lot15)
+p4 <- ggplot(house_plots, aes(x = sqft_lot15_log, y = price_log)) +
+  geom_point(alpha=.2) +
+  geom_smooth(method = "lm",  se = TRUE) +
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_lot15)",
+    x = "log_10(sqft_lot15)", y = "log_10(price)"
+    
+  ) +
+  theme_bw(base_size = 10)
+
+gridExtra::grid.arrange(p1, p3,p2, p4, ncol= 2, nrow = 2)
+
+```
+
+The "Scatter plot of price vs sqft_lot" does not indicates a strong linear relationship between without transformations between the variables due to the high variance in price at low sqft_lot values. However, after a log transform of both variables the variance stabilizes somewhat and produces a visualization with a clearer linear relationship between log(sqft_lot) and log(price). However, the variance is still higher in the middle section of sqft_lot than the two extremes in the plot. Noticeably, the plots between log(price) vs log(sqft_lot) and log(sqft_lot_15) have very similar variance and residual patterns unlike the different sqft_living and sqft_living15 plots, suggesting houses of similar lot sizes tend to group together with respect to price. 
+
+
+
+### diff_yr_sale_yr_built
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=8}
+p1 <- ggplot(house_plots, aes(x = diff_yr_sale_yr_built, y = price)) +
+  geom_point(alpha=.2) +
+    scale_y_continuous(labels = price_fmt) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of price ($) vs diff_yr_sale_yr_built (yrs)",
+    x = "diff_yr_sale_yr_built (yrs)", y = "price ($)"
+  )  +
+  theme_bw(base_size = 8)
+
+
+p2 <- ggplot(house_plots, aes(x = diff_yr_sale_yr_built, y = price_log)) +
+  geom_point(alpha=.2) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of log(price) vs diff_yr_sale_yr_built (yrs)",
+    x = "diff_yr_sale_yr_built (yrs)", y = "log_10(price)"
+  )  +
+  theme_bw(base_size = 8)
+
+gridExtra::grid.arrange(p1, p2, ncol= 2, nrow = 1)
+
+
+```
+
+
+The visualization "Scatter plot of price ($) vs diff_yr_sale_yr_built (yrs)" shows a very week negative correlation between the age of the house and the price. However, looking at the plot this relationship does not look like it is significant, even with a log transformation. Given this data, we will likely drop this predictor in modeling.
+
+
+
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+qual_vars<-house_clean[,c("waterfront","view", "condition", "grade", "zip4_class", "renovation_group", "season")]
+house_plots <-house_plots[house_plots$grade!=3,]
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+
+p1 <- ggplot(house_plots, aes(x = factor(grade), y = price_log)) +
+  geom_violin(linewidth = 0.5, trim = TRUE, scale = "width") +  
+  labs(
+    title    = "Violin plot of log(price) vs grade",
+    x = "grade", y = "log_10(price)"
+  )+
+    stat_summary(fun = "median", geom = "crossbar", size=.1,  aes(color = "median")) +  
+  scale_color_manual(name = "lines", values = c("median" = "red"), ) +
+  theme_bw(base_size = 10)
+
+p2 <- ggplot(house_plots, aes(x = factor(condition), y = price_log)) +
+  geom_violin(linewidth = 0.5, trim = TRUE, scale = "width") +
+    stat_summary(fun = "median", geom = "crossbar", size=.1, color = "red") +
+  labs(
+    title    = "Violin plot of log(price) vs condition",
+    x = "condition", y = "log_10(price)"
+  )  +
+  theme_bw(base_size = 10)
+
+p3 <- ggplot(house_plots, aes(x = factor(renovation_group), y = price_log)) +
+  geom_violin(linewidth = 0.5, trim = TRUE, scale = "width") +
+    stat_summary(fun = "median", geom = "crossbar", size=.1, color = "red") +
+  labs(
+    title    = "Violin plot of log(price) vs renovation_group",
+    x = "renovation_group", y = "log_10(price)"
+  )  +
+  theme_bw(base_size = 10)
+lay <- rbind(c(2,3),
+             c(1,1))
+gridExtra::grid.arrange(p1, p2, p3, layout_matrix = lay)
+```
+
+
+The violin plots of condition, renovation_group and grade show differences in the factors of the predictors related to price. For example, there is a clear positive relationship between higher grades and higher prices. This is especially true for higher grades ( grade >= 9) where the density of the grade is thicker around the median price where as lower grades ( grade < 9) has more overlap in density distribution. For condition, the difference is a clear split between condition 1 and 2 vs condition 3, 4 and 5 where condition 3, 4 and 5 have a higher median price. This could be useful when considering tree regression as a split can be done on this predictor. There is also a similar difference in renovation_group where median price is higher for "recently_renovated" group vs "never_renovated", but there is still a far amount of overlap making this split less pronounced. 
+
+
+### zip4_class, waterfront, view and season
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+house_plots$zip4_class <- factor(house_plots$zip4_class, 
+                      levels = c("low", "med-low", "medium", "med-high", "high"))
+
+
+p1 <- ggplot(house_plots, aes(x = factor(zip4_class), y = price_log)) +
+  geom_violin(linewidth = 0.5, trim = TRUE, scale = "width") +  
+  labs(
+    title    = "Violin plot of log(price) vs zip4_class",
+    x = "zip4_class", y = "log_10(price)"
+  )+
+    stat_summary(fun = "median", geom = "crossbar", size=.1,  color="red") +  
+  theme_bw(base_size = 10)
+
+p2 <- ggplot(house_plots, aes(x = factor(waterfront), y = price_log)) +
+  geom_violin(linewidth = 0.5, trim = TRUE, scale = "width") +
+    stat_summary(fun = "median", geom = "crossbar", size=.1,  aes(color = "median")) +  
+  scale_color_manual(name = "lines", values = c("median" = "red"), ) +
+  labs(
+    title    = "Violin plot of log(price) vs waterfront",
+    x = "waterfront", y = "log_10(price)"
+  )  +
+  theme_bw(base_size = 10)
+
+p3 <- ggplot(house_plots, aes(x = factor(view), y = price_log)) +
+  geom_violin(linewidth = 0.5, trim = TRUE, scale = "width") +
+    stat_summary(fun = "median", geom = "crossbar", size=.1, color = "red") +
+  labs(
+    title    = "Violin plot of log(price) vs view",
+    x = "view", y = "log_10(price)"
+  )  +
+  theme_bw(base_size = 10)
+
+p4 <- ggplot(house_plots, aes(x = factor(season), y = price_log)) +
+  geom_violin(linewidth = 0.5, trim = TRUE, scale = "width") +
+    stat_summary(fun = "median", geom = "crossbar", size=.1, color = "red") +
+  labs(
+    title    = "Violin plot of log(price) vs season",
+    x = "season", y = "log_10(price)"
+  )  +
+  theme_bw(base_size = 10)
+
+
+gridExtra::grid.arrange(p1, p2, p3, p4)
+```
+
+
+The violin plots of zip4_class, waterfront, view and season also show differences for some of the predictors related to price. The zip4_class does show a small increase in median price as the factor level increase, though there is still a lot of overlap between each distribution. For waterfront, there is a clear impact of waterfront = 1 leading to an increase in price. Additionally, for view there is an impact of view = 4 median price being higher and  view = 0 median price being lower while the other views have similar median prices. The visualizations of waterfront and view suggest a regression tree can find a split on waterfront = 1 and view = 0 / view = 4 to predict price. There does not seem to be a difference in "off season" and "peak season" price , so this variable will likely be dropped.
+
+## Multivariate plots
+
+
+For the multivariate plots, the strategy used was to split the sqft_living and  sqft_lot vs price plots by the significant categorical variables found in single variable plots (i.e. bedrooms, bathrooms, view and waterfront). Additionally, we are ignoring sqft_living15 and sqft_lot15 as these plots are very similar to the sqft_living and sqft_lot plots and this visualization would be redundant.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+p1 <- ggplot(house_plots, aes(x = sqft_living_log, y = price_log, color=bathrooms)) +
+  scale_color_gradient(low="blue", high="red") + 
+  geom_point(alpha=.5) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_living) colored by bathrooms",
+    x = "log_10(sqft_living)", y = "log_10(price)"
+  ) +
+  theme_bw(base_size = 7)
+p2 <- ggplot(house_plots, aes(x = sqft_living_log, y = price_log, color=bedrooms)) +
+  scale_color_gradient(low="blue", high="red") + 
+  geom_point(alpha=.5) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_living) colored by bedrooms",
+    x = "log_10(sqft_living)", y = "log_10(price)"
+  ) +
+  theme_bw(base_size = 7)
+
+p3 <- ggplot(house_plots, aes(x = sqft_lot_log, y = price_log, color=bathrooms)) +
+  scale_color_gradient(low="blue", high="red") + 
+  geom_point(alpha=.5) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_lot) colored by bathrooms",
+    x = "log_10(sqft_lot)", y = "log_10(price)"
+  ) +
+  theme_bw(base_size = 7)
+p4 <- ggplot(house_plots, aes(x = sqft_lot_log, y = price_log, color=bedrooms)) +
+  scale_color_gradient(low="blue", high="red") + 
+  geom_point(alpha=.5) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_lot) colored by bedrooms",
+    x = "log_10(sqft_lot)", y = "log_10(price)"
+  ) +
+  theme_bw(base_size = 7)
+gridExtra::grid.arrange(p1, p2, p3, p4)
+```
+
+
+The scatter plots of log(sqft_living) and log(sqft_lot) vs price colored by bathrooms and bedrooms show some interesting splits in the data. For the sqft_living plots, the bathrooms and bedrooms seem to increase with the sqft_living indicated by the blue to red coloring gradient as sqft_living increases. This makes sense intuitively because the number of bathrooms and bedrooms should increase proportional to the size of the living space of a house. 
+
+
+However for the sqft_lot plot, we can clearly the bathrooms and bedrooms blue to red coloring gradient increase with price (most of the red is above the regression line). This indicates the variance in price over sqft_lot could be due to the number of bathrooms and bedrooms.
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3, fig.width=8}
+house_plots_wv <- house_plots %>%
+  mutate(
+    Waterfront = factor(ifelse(waterfront == 1, "Waterfront", "No waterfront"),
+                        levels = c("No waterfront", "Waterfront"))  )
+p1 <- ggplot(house_plots_wv, aes(x = sqft_living_log, y = price_log, color=Waterfront)) +
+  scale_color_manual(values=c("Waterfront"="blue", "No waterfront"="darkgrey")) + 
+  geom_point(alpha=.2) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_living) colored by waterfront",
+    x = "log_10(sqft_living)", y = "log_10(price)"
+  ) 
+
+p2 <- ggplot(house_plots_wv, aes(x = sqft_lot_log, y = price_log, color=Waterfront)) +
+  scale_color_manual(values=c("Waterfront"="blue", "No waterfront"="darkgrey")) + 
+  geom_point(alpha=.2) +
+  geom_smooth(method = "lm",  se = TRUE) +  
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_lot) colored by waterfront",
+    x = "log_10(sqft_lot)", y = "log_10(price)"
+  ) 
+gridExtra::grid.arrange(p1, p2)
+
+```
+
+
+The scatter plots of log(sqft_living) and log(sqft_lot) vs price colored by waterfront also show interesting patterns. For the sqft_living plot, the "waterfront" class shows a clear increase in the intercept and slope of the regression line indicating it has a strong affect on price, especailly for larger sqft_living sizes.
+
+
+However for the sqft_lot plot, we see the opposite affect where the slope almost becomes negative in the "waterfront" class vs "No waterfront". However, the regression line still has an intercept above the "No waterfront" class should the "waterfront" class overall has a larger price. Potentially, it could be useful to explore an interaction between sqft_living/sqft_lot and waterfront in a linear regression model. 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+house_plots_wv <- house_plots_wv %>%
+  mutate(
+    view_label = paste0("View: ", view)
+  )
+
+ggplot(house_plots_wv, aes(x = view_label, y = price_log, fill = Waterfront)) +
+  geom_boxplot(outlier.alpha = 0.25, linewidth = 0.5, width = 0.6) +
+  scale_fill_manual(
+    values = c("No waterfront" = "lightblue", "Waterfront" = "blue")
+  ) +
+  labs(
+    title    = "Boxplot of price by view and waterfront",
+    x = "view", y = "log_10(price)"
+  ) 
+```
+
+
+The "Boxplot of price by view and waterfront" shows that the affect of view on price may be a result of more "Waterfront" class observation correlating with higher values of view. This is due to the "Waterfront" classes showing a higher prices in the View 2, 3 and 4 class where as the "No waterfront" class has less split in price over the view classes. This can indicate that an interaction is may be useful between view and waterfront, or that dropping view is sufficient depending on our regression model goals.
+
+
+# Section 5
+
+
+## Linear Regression
+
+
+## Regression Tree - predict price 
+
+
+##### Base Regression Tree
+
+```{r}
+tree_reg = tree(price~.-price,  train)
+par(mar = c(1, 1, 1, 1))
+plot(tree_reg)
+text(tree_reg, pretty = 0)
+summary(tree_reg)
+```
+
+###### Predictive Test
+
+```{r} 
+# calcuate MSE for base Reg Tree 
+
+yhat_tree_reg =  predict(tree_reg, newdata = test[-1])
+mse_tree_reg = mean((yhat_tree_reg - test$price)^2)
+cat("MSE for Tree-Based Regression Model: ",comma(mse_tree_reg))
+```
+
+
+
+##### Pruned Regression Tree
+
+```{r}
+#set.seed(1)
+cv_tree_reg = cv.tree(tree_reg)
+plot(cv_tree_reg$size, cv_tree_reg$dev, type = "b")
+```
+
+The most complex tree is selected by cross validation. according to the text (pg 357) we can also prune using the following approach:
+
+
+
+
+```{r}
+tree_reg_prune = prune.tree(tree_reg, best = 5)
+plot(tree_reg_prune)
+text(tree_reg_prune, pretty =  0 )
+```
+
+
+###### Predictive Test
+
+```{r}
+yhat_tree_reg_prune =  predict(tree_reg_prune, newdata = test[-1])
+mse_tree_reg_prune = mean((yhat_tree_reg_prune - test$price)^2)
+cat("MSE for Pruned verison of Tree-Based Regresion model: ", dollar(mse_tree_reg_prune))
+```
+
+
+##### Bagging Regression
+
+```{r}
+
+#set.seed(2) 
+##bagging is special case of random forest when mtry = number of predictors
+
+preds = ncol(train) -1 
+bag_reg = randomForest::randomForest(price~.-price, data=train, mtry=preds, importance=TRUE)
+bag_reg
+
+```
+Note: Below is the faster version that runs better on apple silicon split cores. The results of the two models seem very similar. I am able to use this package to build the random forest model as well. I just want to confirm that this is okay to use before I implement it globally. 
+
+```{r}
+registerDoMC(cores = 4)  # experiment with this number
+preds = ncol(train) -1 
+#bag_class = randomForest::randomForest(price~.-quality, data=train, mtry=preds, importance=TRUE)
+
+bag_reg2 <- ranger(
+  price ~ .,
+  data = train,
+  importance = "permutation",
+  mtry = preds,   
+  num.threads = 4 
+)
+bag_reg2
+
+```
+
+
+###### Predictive Test
+
+
+```{r}
+yhat_bag_reg = predict(bag_reg, newdata = test[-1])
+
+mse_bag_reg = mean((yhat_bag_reg - test$price)^2)
+cat("Test MSE for Bagging  Model: ",dollar(mse_bag_reg))
+```
+
+Version 2: 
+
+
+```{r}
+yhat_bag_reg2 = predict(bag_reg2, data  = test[-1])$predictions
+
+mse_bag_reg2 = mean((yhat_bag_reg2 - test$price)^2)
+cat("Test MSE for Bagging  Model 2: ",dollar(mse_bag_reg2))
+```
+
+
+
+##### Random Forest Regression
+
+
+```{r}
+rf_reg = randomForest::randomForest(price~.-price, data=train, mtry=3, importance=TRUE)
+rf_reg
+```
+
+
+```{r}
+randomForest::varImpPlot(rf)
+```
+
+
+###### Predictive Test
+
+
+```{r}
+yhat_rf_reg = predict(rf_reg, newdata = test[-1])
+
+mse_rf = mean((yhat_rf_reg - test$price)^2)
+cat("Test MSE for Random Forrest  Model: ",dollar(mse_rf))
+```
+
+
+##### Boosting Regression
+
+```{r}
+#set.seed(2)
+boost_reg = gbm::gbm(price~.-price, data=train, distribution="gaussian", shrinkage = 0.1, n.trees=500)
+
+summary(boost_reg)
+```
+
+
+###### Predictive Test
+
+```{r}
+yhat_boost_reg = predict(boost_reg, newdata = test[-1])
+
+mse_boost_reg = mean((yhat_boost_reg - test$price)^2)
+cat("Test MSE for Boost  Model: ", dollar(mse_boost_reg))
+```
+
+
+
+
+# Section 6
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+house_plots$quality <- factor(ifelse(house_plots$condition > 3 & house_plots$grade > 7, 
+                                      "good_quality", 
+                                      "not_good_quality"), levels = c("good_quality", "not_good_quality"))
+color_help <- c("good_quality" = "#00BFC4", "not_good_quality" = "#F8766D")
+
+```
+
+
+## Distribution of "good" quality homes (response variable)
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+class_counts <- house_plots %>%
+  count(quality) %>%
+  mutate(
+    pct   = n / sum(n) * 100,
+    label = paste0(n, "\n(", round(pct, 1), "%)")
+  )
+ 
+p1 <- ggplot(class_counts, aes(x = quality, y = n, fill = quality)) +
+  geom_col(width = 0.5, show.legend = FALSE) +
+  geom_text(aes(label = label), vjust = -0.4, size = 3) +
+    scale_fill_manual(values = color_help) +
+    scale_y_continuous( expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title    = "Class count: good quality vs not good quality",
+    x = NULL, y = "Number of homes"
+  ) +
+  theme(panel.grid.major.x = element_blank())
+p1
+```
+
+Given the class count between good quality vs not good quality there is a seeming in balance between good quality homes (12.5%) and not good quality homes (87.5%). This indicates we will have to use evaluation metrics like specificity and sensitivity instead of just accuracy when evaluating the classification models.
+
+### sqft_living and sqft_lot
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+p1 <- ggplot(house_plots, aes(x = sqft_living_log, fill = quality, color=quality)) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title    = "Density plot of log(sqft_living) colored by quality",
+    x = "log_10(sqft_living)", y = "Density"
+  )+
+  scale_fill_manual(values = color_help) +
+  scale_colour_manual(values = color_help)+
+  theme_bw(base_size = 7)
+p2 <- ggplot(house_plots, aes(x = sqft_living15_log, fill = quality, color=quality)) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title    = "Density plot of log(sqft_living15) colored by quality",
+    x = "log_10(sqft_living15)", y = "Density"
+  )+
+  scale_fill_manual(values = color_help) +
+  scale_colour_manual(values = color_help)+
+  theme_bw(base_size = 7)
+
+p3 <- ggplot(house_plots, aes(x = sqft_lot_log, fill = quality, color=quality)) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title    = "Density plot of log(sqft_lot) colored by quality",
+    x = "log_10(sqft_lot)", y = "Density"
+  )+
+  scale_fill_manual(values = color_help) +
+  scale_colour_manual(values = color_help)+
+  theme_bw(base_size = 7)
+p4 <- ggplot(house_plots, aes(x = sqft_lot15_log, fill = quality, color=quality)) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title    = "Density plot of log(sqft_lot15) colored by quality",
+    x = "log_10(sqft_lot15)", y = "Density"
+  )+
+  scale_fill_manual(values = color_help) +
+  scale_colour_manual(values = color_help)+
+  theme_bw(base_size = 7)
+gridExtra::grid.arrange(p1, p2,p3,p4)
+
+```
+
+
+The density plots for log(sqft_living), log(sqft_living15), log(sqft_lot) and  log(sqft_lot15) show that quality is primarily more dependent on sqft_living than sqft_lot. There is a distinctive split in the density peaks of good quality vs not good quality in the log(sqft_living) and log(sqft_living15) plots. There is even more separation in the log(sqft_living15) plot indicating this predictor may be more important in predicting quality class in modeling. On the other hand, the plots for log(sqft_lot) and  log(sqft_lot15) show less of a distinctive split between the quality class.
+
+
+### bathrooms, bedrooms and floors
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=6, fig.width=8}
+bed_prop <- house_plots %>%
+  filter(bedrooms <= 8) %>%
+  group_by(bedrooms, quality) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(bedrooms) %>%
+  mutate(
+    total = sum(n),
+    pct   = n / total * 100
+  )
+
+ 
+
+p1 <- ggplot(bed_prop, aes(x = factor(bedrooms), y = pct, fill = quality)) +
+  geom_col(position = "stack") +
+  geom_text(
+    data = bed_prop %>% filter(quality == "good_quality"),
+    aes(label = paste0(round(pct), "%"), y = 98),
+    size = 3) +
+  geom_text(
+    data = bed_prop %>% filter(quality == "good_quality") %>%
+      group_by(bedrooms) %>% slice(1),
+    aes(label = paste0("n=", total), y = 5),
+    size = 3, 
+    x = factor(bed_prop %>% filter(quality == "good_quality") %>%
+                 pull(bedrooms))
+  ) +
+  scale_fill_manual(values = color_help) +
+  scale_y_continuous(limits = c(0, 110),
+                     labels = function(x) paste0(x, "%")) +
+  labs(
+    title = "Stacked barplot of bedrooms colored by quality",
+    x = "bedrooms  (n = total homes)", y = "Percentage of homes"
+  )+
+  theme_bw(base_size = 10)
+
+p2 <-ggplot(house_plots, aes(x = bathrooms, fill = quality, color=quality, y = after_stat(density * .25 * 100))) +
+  geom_histogram(data = subset(house_plots, quality == "not_good_quality"), alpha = 0.5, position = "identity", binwidth = .25) +
+    geom_histogram(data = subset(house_plots, quality == "good_quality"), alpha = 0.5, position = "identity", binwidth = .25) +
+
+  labs(
+    title    = "Density histogram of bathrooms colored by quality",
+    x = "bathrooms", y = "Density"
+  )+
+  scale_fill_manual(values = color_help) +
+  scale_colour_manual(values = color_help)+
+  scale_x_continuous(limits = c(0,6), breaks = seq(0, 6, by = .25))+
+  theme_bw(base_size = 10)
+
+floor_prop <- house_plots %>%
+  group_by(floors, quality) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(floors) %>%
+  mutate(
+    floor_total = sum(n),
+    pct         = n / floor_total * 100
+  ) %>%
+  ungroup()
+ 
+p3 <- ggplot(floor_prop, aes(x = factor(floors), y = n, fill = quality)) +
+  geom_col(position = "dodge", width = 0.7) + 
+ geom_label(
+    aes(label = paste0(round(pct, 1), "%")),
+    position  = position_dodge(width = 0.8),
+    size      = 2.5,
+  ) +
+  scale_fill_manual(values = color_help) +
+  labs(
+    title    = "Barplot of floors by quality",
+    x = "floors", y = "Number of houses"
+  ) +
+  theme_bw(base_size = 10)
+
+gridExtra::grid.arrange(p1, p2,p3)
+```
+
+
+The bar plots and density plots for bathrooms, bedrooms and floors indicates the varied nature of these predictors with respect to quality. The bedrooms stacked bar plot shows that the higher number of bedrooms, the higher percentage of "good quality" houses have that number of bedrooms compared to "not good quality". This indicates a linear relationship with number of bedrooms and percent "good quality" that could be used in the logistic regression model. In contrast, the bar plot of floors by quality does not show a relationship between number of floors and percentage of "good quality". The histogram of bathrooms colored by quality also does not shows a significant difference in between the distribution of "good quality" and "not good quality" homes over bathrooms, except homes that have 1 bathroom have are high density "not good quality", which can be a useful split in the tree classification.
+
+
+### zip4_class, renovation group, season, diff_yr_sale_yr_built
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+
+zip4_class_prop <- house_plots %>%
+  group_by(zip4_class, quality) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(zip4_class) %>%
+  mutate(
+    zip4_class_total = sum(n),
+    pct         = n / zip4_class_total * 100
+  ) %>%
+  ungroup()
+
+p1 <- ggplot(zip4_class_prop, aes(x = factor(zip4_class, levels = c("low", "med-low", "medium", "med-high", "high")), y = n, fill = quality)) +
+  geom_col(position = "dodge", width = 0.7) + 
+ geom_label(
+    aes(label = paste0(round(pct, 1), "%")),
+    position  = position_dodge(width = 0.7),
+    size      = 2,
+  ) +
+  scale_fill_manual(values = color_help) +
+  labs(
+    title    = "Bar plot of zip4_class by quality",
+    x = "zip4_class", y = "Number of houses"
+  ) +
+  theme_bw(base_size = 8)
+
+ren_grp_prop <- house_plots %>%
+  group_by(renovation_group, quality) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(renovation_group) %>%
+  mutate(
+    renovation_group_total = sum(n),
+    pct         = n / renovation_group_total * 100
+  ) %>%
+  ungroup()
+
+p2 <- ggplot(ren_grp_prop, aes(x = factor(renovation_group), y = n, fill = quality)) +
+  geom_col(position = "dodge", width = 0.7) + 
+ geom_label(
+    aes(label = paste0(round(pct, 1), "%")),
+    position  = position_dodge(width = 0.7),
+    size      = 2,
+  ) +
+  scale_fill_manual(values = color_help) +
+  labs(
+    title    = "Bar plot of renovation_group by quality",
+    x = "renovation_group", y = "Number of houses"
+  ) +
+  theme_bw(base_size = 8)
+
+season_prop <- house_plots %>%
+  group_by(season, quality) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(season) %>%
+  mutate(
+    season_total = sum(n),
+    pct         = n / season_total * 100
+  ) %>%
+  ungroup()
+
+p3 <- ggplot(season_prop, aes(x = factor(season), y = n, fill = quality)) +
+  geom_col(position = "dodge", width = 0.7) + 
+ geom_label(
+    aes(label = paste0(round(pct, 1), "%")),
+    position  = position_dodge(width = 0.7),
+    size      = 2,
+  ) +
+  scale_fill_manual(values = color_help) +
+  labs(
+    title    = "Bar plot of season by quality",
+    x = "season", y = "Number of houses"
+  ) +
+  theme_bw(base_size = 8)
+
+
+
+
+p4 <- ggplot(house_plots, aes(x = diff_yr_sale_yr_built, fill = quality, color=quality)) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title    = "Density plot of diff_yr... (yrs) colored by quality",
+    x = "diff_yr_sale_yr_built (yrs)", y = "Density"
+  )+
+  scale_fill_manual(values = color_help) +
+  scale_colour_manual(values = color_help)+
+  theme_bw(base_size = 8)
+gridExtra::grid.arrange(p1, p2,p3, p4)
+
+```
+
+The "Bar plot of zip4_class by quality" shows a general postive correlation with the higher zipcode classes having higher percent of "good quality". The "Density plot of diff_yr_sale_yr_built (yrs) colored by quality" also shows a high density spike around 30 - 40 yrs which indicates a potential signal for a model to discover, but the distributions are still pretty similar so that may not be feasible. The bar plots for renovation group and season do not show discernible difference in percent quality, so these predictors are likely to be dropped in modeling.
+
+### price
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+p1<-ggplot(house_plots, aes(x = price, fill = quality, color=quality)) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title    = "Density plot of price ($) colored by quality",
+    x = "price ($)", y = "Density"
+  )+
+  scale_fill_manual(values = color_help) +
+  scale_colour_manual(values = color_help)+
+  scale_x_continuous(labels = price_fmt) +
+  theme_bw(base_size = 8)
+
+p2<-ggplot(house_plots, aes(x = price_log, fill = quality, color=quality)) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title    = "Density plot of price_log colored by quality",
+    x = "price_log", y = "Density"
+  )+
+  scale_fill_manual(values = color_help) +
+  scale_colour_manual(values = color_help)+
+  theme_bw(base_size = 8)
+gridExtra::grid.arrange(p1, p2)
+
+```
+The "Density plot of price_log colored by quality" shows a separation as price increases, which can be exploited in predictive modeling. This is distinction is easier to see in the log transformed price density plot.
+
+## Multivariate plots 
+
+For the multivariate plots, the strategy used was to focus on the significant predictors from the single variables plots (i.e. sqft_living, sqft_living15, price, bedrooms). Furthermore, this section also considers view and waterfront together.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+wv_rate <- house_plots %>%
+  mutate(
+    waterfront_label = ifelse(waterfront == 1, "Waterfront", "No waterfront"),
+    view_label       = paste0("View: ", view)
+  ) %>%
+  group_by(waterfront_label, view_label) %>%
+  summarise(
+    good_pct = mean(quality == "good_quality") * 100,
+    n        = n(),
+    .groups  = "drop"
+  )
+
+p6 <- ggplot(wv_rate,
+             aes(x = view_label, y = waterfront_label, fill = good_pct)) +
+  geom_tile(colour = "white", linewidth = 1) +
+  geom_text(aes(label = paste0(round(good_pct), "%\nn=", n)),
+            size = 3.2, colour = "white", fontface = "bold") +
+  scale_fill_gradient(low =  "blue", high = "red",
+                      name = "% good\nquality",
+                      limits = c(0, 100)) +
+  labs(
+    title    = "Heat map of view rating and waterfront status",
+    x = "View", y = NULL
+  ) +
+  theme(panel.grid = element_blank(),
+        axis.text.y = element_text(size = 11))
+p6
+```
+
+The "Heat map of view rating and waterfront status" visualization shows the percentage of "good quality" houses in each level of view and waterfront. There is a clear pattern of percent of "good quality" houses increasing as view increases. However, when waterfront is taken into account, there does not seem to be a distinct increase of "waterfront" over "no waterfront" category. This makes intuitive sense as "quality" is based more on the characteristics of the house itself rather than external factors.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+
+p3 <- ggplot(house_plots %>% filter(bedrooms <= 6),
+             aes(x = sqft_living_log, y = price_log,
+                 colour = quality)) +
+  geom_point(alpha = 0.3, size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.9) +
+  scale_fill_manual(values = color_help) +
+  scale_colour_manual(values = color_help)+
+  facet_wrap(~ paste0(bedrooms, " bed"), nrow = 2) +
+  scale_fill_gradient(low =  "blue", high = "red")+
+  labs(
+    title    = "Scatter plot of log(price) vs log(sqft_living) facted by bedrooms and colored by quality",
+    x = "log(sqft_living)", y = "log(price)"
+  ) +
+  theme(
+    strip.text      = element_text(face = "bold", size = 10),
+    plot.title = element_text(size = 12),
+  )
+p3
+```
+
+The plots above of log(price) vs log(sqft_living) faceted by bedroom show that "good quality" houses have larger value for intercept over "not good quality" houses. Therefore, we expect good quality houses to have higher price for the same sqft_living value. The magnitude of slope varies over bedroom plots, but this may be due to lack of amount of "good quality" house at higher bedroom sizes.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=8}
+bubble_df <- house_plots %>%
+  filter(bedrooms <= 8) %>%
+  group_by(bedrooms, quality) %>%
+  summarise(
+    med_price    = median(price_log),
+    med_sqft15   = median(sqft_living15_log),
+    n            = n(),
+    .groups = "drop"
+  )
+ 
+p4 <- ggplot(bubble_df,
+             aes(x = factor(bedrooms), y = med_price,
+                 size = med_sqft15, colour = quality)) +
+  geom_point(alpha = 0.75) +
+  geom_text(aes(label = paste0(round(med_sqft15,1), " log-sqft")),
+            vjust = -1, size = 3, colour = "grey30",
+            show.legend = FALSE) +
+  scale_fill_manual(values = color_help) +
+  scale_colour_manual(values = color_help)+
+  scale_size_continuous(range = c(4, 18),
+                        name   = "Median\nlog-sqft_living_15") +
+  scale_fill_gradient(low =  "blue", high = "red",
+                        name   = "quality") +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15))) +
+  labs(
+    title    = "Bubble scatter plot of median log(price) by bedrooms — bubble = median log(sqft_living_15), color = quality",
+
+    x = "bedrooms", y = "median log(price)"
+  ) +
+  theme(plot.title = element_text(size = 10))
+p4
+```
+
+The bubble scatter plot above shows the difference in median log(price) over bedrooms with bubble size corresponding to median log(sqft_living15). The log(sqft_living15) has a clear impact on the price of "good quality" where large difference in median log(sqft_living15) correspond with larger distance between This indicates that log(sqft_living15) has significant impact on the house being "good quality". The log(price) also has an impact since the  "good quality" houses have a higher median price over all bedroom classes, but it less pronounced than log(sqft_living15). This is especially apparent with the 8 bedroom houses. 
+
+
+# Section 7
+
+## Logistic Regression
+
+## Classification Tree - predict quality 
+
+
+```{r}
+house_clean = house
+house_clean$quality <- factor(ifelse(house_clean$condition > 3 & house_clean$grade > 7, 
+                                      "good_quality", 
+                                      "not_good_quality"))
+house_clean[, c("condition","grade")] <- list(NULL)
+house_clean[, c("id","yr_renovated", "date", "lat", "long", "zipcode", "diff_yr_sold_yr_reno", "sqft_above", "sqft_basement", "yr_built", "month", "zip4")] <- list(NULL)
+factorCols <- c("floors", "waterfront", "view","season","renovation_group","zip4_class","quality")
+house_clean[factorCols] =  lapply(house_clean[factorCols], as.factor)
+sample.data<-sample.int(nrow(house_clean), floor(.50*nrow(house_clean)), replace = F)
+train = house_clean[sample.data,]
+train = as.data.frame(train)
+test = house_clean[-sample.data,]
+test = as.data.frame(test)
+```
+
+
+##### Base Classification Tree
+
+```{r}
+
+tree_class = tree(quality~.-quality,  train)
+par(mar = c(1, 1, 1, 1))
+plot(tree_class)
+text(tree_class, pretty = 0)
+summary(tree_class)
+```
+###### Predictive Test
+
+```{r}
+preds = predict(tree_class, newdata = test[-15], type= "class")
+table(preds, test$quality)
+tree_class_error = 1-mean(preds==test$quality)
+cat("Error Rate for Tree-Based Classification Model: ",percent(tree_class_error))
+
+```
+
+
+##### Pruned Classification Tree
+
+```{r}
+cv_tree_class = cv.tree(tree_class, FUN = prune.misclass)
+plot(cv_tree_class$size, cv_tree_class$dev, type = "b")
+cv_tree_class
+```
+
+Using trees of either 9 or 7 terminal nodes results in 1,291 classification errors, and using a tree with 1 terminal node results in 1,328 classification errors. So our best bet here is to use either 9 or 7 terminal nodes. For the sake of simplicity, I suggest using 7 nodes. 
+
+
+```{r}
+par(mfrow = c(1, 2))
+plot(cv_tree_class$size ,cv_tree_class$dev , type = "b")
+plot(cv_tree_class$k, cv_tree_class$dev , type = "b")
+```
+tried using this plot from the text but i am not sure how useful it is. 
+
+```{r}
+tree_class_prune = prune.tree(tree_class, best = 7)
+plot(tree_class_prune)
+text(tree_class_prune, pretty = 0 )
+```
+
+###### Predictive Test
+
+```{r}
+preds = predict(tree_class_prune, newdata = test[-15], type= "class")
+table(preds, test$quality)
+tree_class_prune_error = 1-mean(preds==test$quality)
+cat("Error Rate for Pruned Tree-Based Classification Model: ",percent(tree_class_prune_error))
+```
+It appears that pruning the tree down to 7 terminal nodes has increased the error rate from 12% to 13%
+
+##### Bagging Classification
+
+
+
+```{r}
+library(doMC)
+library(ranger)
+registerDoMC(cores = detectCores() - 1)  # leaves one core free
+parallel::detectCores()  # M3 Pro has 11-12, M3 Max has 14-16
+registerDoMC(cores = 4)  # experiment with this number
+preds = ncol(train[-15]) -1 
+#bag_class = randomForest::randomForest(price~.-quality, data=train, mtry=preds, importance=TRUE)
+
+bag_class <- ranger(
+  quality ~ .,
+  data = train,
+  #num.trees = 100,
+  mtry = preds,   # use all predictors = bagging
+  num.threads = 4        # adjust based on your core testing
+)
+```
+
+
+###### Predictive Test
+
+```{r}
+preds = predict(bag_class, data = test)
+table(preds$predictions, test$quality)
+bag_class_error = 1-mean(preds$predictions==test$quality)
+cat("Error Rate for Bagging Classification Model: ",percent(bag_class_error))
+```
+
+Here we see the error rate for the bagging model is down to 11% 
+
+
+##### Random Forrest Classification
+
+```{r}
+rf_class <- ranger(
+  quality ~ .,
+  data = train,
+  #num.trees = 100,
+  #mtry = preds,   # use all predictors = bagging
+  num.threads = 4        # adjust based on your core testing
+)
+```
+
+###### Predictive Test
+
+```{r}
+preds = predict(rf_class, data = test)
+table(preds$predictions, test$quality)
+rf_class_error = 1-mean(preds$predictions==test$quality)
+cat("Error Rate for Bagging Classification Model: ",percent(rf_class_error))
+```
+
+Random forrest model has brought the error rate down to 10% 
+
+##### Boosting Classification 
+
+
+```{r}
+
+train <- train %>%
+  mutate(quality = ifelse(quality == "good_quality", 1, 0))
+
+test <- test %>%
+  mutate(quality = ifelse(quality == "good_quality", 1, 0))
+n_trees = 500
+boost_class = gbm::gbm(quality~., data=train, distribution="bernoulli", shrinkage = 0.1, n.trees=n_trees)
+
+summary(boost_reg)
+```
+
+###### Predictive Test
+
+```{r}
+preds = predict(boost_class, data = test)
+probs <- predict(boost_class, newdata = test, n.trees = n_trees, type = "response")
+preds <- ifelse(probs > 0.5, 1, 0)
+table(preds, test$quality)
+
+boost_error <- 1 - mean(preds == test$quality)
+cat("Error Rate for Boosting Classification Model: ", percent(boost_error))
+#rf_class_error = 1-mean(preds$predictions==test$quality)
+#cat("Error Rate for Bagging Classification Model: ",percent(rf_class_error))
+```
+
+This has produced the best error rate thus far, with only 7% of predictions being classified incorrectly. 
+
