@@ -1,6 +1,6 @@
 ---
 title: "project_2"
-author: "Joseph Bannon"
+author: "Group 6: Joseph Bannon, Shanjhitha Kannan, Kent Livesay, Hannah Vespalec"
 date: "`r Sys.Date()`"
 output: pdf_document
 ---
