@@ -6,16 +6,10 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-<<<<<<< HEAD
 knitr::opts_chunk$set(echo = FALSE)
-=======
-knitr::opts_chunk$set(echo = TRUE)
->>>>>>> 6d4dbcf2303ee5c53f8c9ff1d4e87cf71bf3f2d8
 ```
 
 
-
-<<<<<<< HEAD
 
 # Section 2
 
@@ -39,71 +33,8 @@ The following variables were excluded from the final dataset due to their lack o
 
 
 
-# Section 2
-=======
-```{r}
-Data<-read.csv("kc_house_data.csv", sep=",", header=TRUE)
-```
-
-
-```{r}
-summary(Data)
-```
-```{r}
-boxplot(Data$sqft_living, horizontal=TRUE)
-```
-
-- Bedrooms = 33 seems to be an error
-
-
-```{r}
-
-ids_with_diffs <- Data[duplicated(Data$date) & !duplicated(Data), ]
-
-
-```
-
-- duplicate ids
-
-
-
-
-- zero bed / zero bath
-
-
-
-
-
-
-Variable changes:
-
-```{r}
-str(Data)
-```
-
-
-- sqft_living appears to be the sum of sqft_basement and sqft_above
-
-- drop sqft_basement and sqft_above, keep the ratio sqft_basement/sqft_living (predictor)
-
-- Lat and long are not useful since they are apart / zipcode already covers this  (predictor)
-
-- 3 cats for time series yr_renovated (predictor)
-
-- date pull out year / time of year (predictor)
-
-- date: age at time of sale (predictor)
-
-- drop id
-
-- 0 bed 0 bath (data entry)
-
->>>>>>> 6d4dbcf2303ee5c53f8c9ff1d4e87cf71bf3f2d8
-
-
 # Section 3
 
-<<<<<<< HEAD
 Prior to modeling, the dataset was examined for potentially erroneous observations through outlier detection and logical consistency checks. The first error identified involved two observations with abnormally high bedroom counts of 11 and 33. When cross-referenced against each observation’s own square footage and number of floors, these values seemed unlikely. The 11 bedroom home, for example, reported only 3,000 square feet of living space across two floors, making 11 bedrooms seem unreasnable. Both observations were removed. Additional errors were found by looking at logically impossible values. One observation reported a sqft_living value greater than the sqft_lot value despite having one floor, which is impossible and was removed from the final dataset. Ten observations stated zero bathrooms, which is unlikely for residential homes and were also removed. Following the removal of zero-bathroom observations, six remaining observations with zero bedrooms were found. While it is possible that they could be studios, the square footage, floor count, and bathroom count made the studio hypothesis unlikely, and they were removed from the dataset. Finally, twelve observations reported a yr_built value later than their sale date, meaning that the house was built after it was sold. These observations were removed from the dataset as they were deemed data entry errors. One additional consideration was examined but ultimately left in the dataset: 176 homes appeared more than once in the dataset, each sold on different dates and at different prices. These repeat sales seemed likely, as the price difference could be consistent with homes that were bought, renovated, and resold within the dataset’s time frame . In total, 31 observations were removed from this data cleansing process, leaving 21,152 observations for analysis. 
 
  
@@ -116,8 +47,6 @@ Yr_build and yr_renovated were also problematic as raw values because the actual
 
 
 
-=======
->>>>>>> 6d4dbcf2303ee5c53f8c9ff1d4e87cf71bf3f2d8
 ```{r}
 house<-read.csv("kc_house_data.csv", sep=",", header=TRUE)
 house <- house[,-1]
@@ -275,13 +204,8 @@ house_clean[, c("yr_renovated", "date", "lat", "long", "diff_yr_sold_yr_reno", "
 ```
 
 
-<<<<<<< HEAD
-=======
 
 
-
-
->>>>>>> 6d4dbcf2303ee5c53f8c9ff1d4e87cf71bf3f2d8
 ```{r}
 set.seed(6021)
 sample.data<-sample.int(nrow(Data), floor(.50*nrow(Data)), replace = F)
