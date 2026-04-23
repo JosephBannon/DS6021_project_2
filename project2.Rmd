@@ -6,6 +6,13 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
+library(scales)
+library(reshape2)
+library(tree)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(caret)
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
@@ -49,7 +56,6 @@ Yr_build and yr_renovated were also problematic as raw values because the actual
 
 ```{r}
 house<-read.csv("kc_house_data.csv", sep=",", header=TRUE)
-house <- house[,-1]
 ```
 
 
@@ -138,7 +144,7 @@ house <- house[house$diff_yr_sale_yr_built > 0,]
 ```{r}
 library(dplyr)
 
-dups <-Data %>%
+dups <-house %>%
   group_by(id) %>%
   filter(n() > 1) %>%
   ungroup()
@@ -182,7 +188,9 @@ print(paste0("Number of houses with multiple sales (price differce greater than 
 price_change_u_100 <- price_change_dups[!(price_change_dups$id %in% remove_ids), ]
 print(paste0("Number of houses with multiple sales (after filtering): ", nrow(price_change_u_100)))
 
-Data <- Data[!(price_change_dups$id %in% remove_ids), ]
+house <- house[!(price_change_dups$id %in% remove_ids), ]
+
+house <- house[,-1]
 
 ```
 
@@ -208,7 +216,7 @@ house_clean[, c("yr_renovated", "date", "lat", "long", "diff_yr_sold_yr_reno", "
 
 ```{r}
 set.seed(6021)
-sample.data<-sample.int(nrow(Data), floor(.50*nrow(Data)), replace = F)
+sample.data<-sample.int(nrow(house_clean), floor(.50*nrow(house_clean)), replace = F)
 train<-house_clean[sample.data, ] ##training data
 test<-house_clean[-sample.data, ] ##test data
 
