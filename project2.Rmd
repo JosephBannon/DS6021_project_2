@@ -2,7 +2,10 @@
 title: "project_2"
 author: "Group 6: Joseph Bannon, Shanjhitha Kannan, Kent Livesay, Hannah Vespalec"
 date: "`r Sys.Date()`"
-output: pdf_document
+output: 
+  pdf_document: 
+    toc: true
+    number_sections: true
 ---
 
 ```{r setup, include=FALSE}
@@ -13,7 +16,14 @@ library(ggplot2)
 library(tidyr)
 library(tidyverse)
 library(caret)
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(
+  echo = FALSE,
+  dev = "ragg_png",
+  fig.width = 10,
+  fig.height = 6,
+  out.width = "\\textwidth",
+  fig.align = "center"
+)
 ```
 
 
@@ -762,17 +772,174 @@ The "Boxplot of price by view and waterfront" shows that the affect of view on p
 
 
 # Section 5
+## Section 5a: Linear Regression
+### Linear Regression Setup
+```{r Linear Regression Setup}
+# Create transformed variables used in linear regression
+train$log_price <- log10(train$price)
+test$log_price  <- log10(test$price)
 
+train$log_sqft_living <- log10(train$sqft_living)
+test$log_sqft_living  <- log10(test$sqft_living)
 
-## Linear Regression
+train$log_sqft_lot <- log10(train$sqft_lot)
+test$log_sqft_lot  <- log10(test$sqft_lot)
+```
+### Correlation checks for linear regression
+```{r}
+num_train_lm <- train %>%
+  select(where(is.numeric))
 
+cor_with_price_lm <- sapply(num_train_lm %>% select(-price), function(x) {
+  cor(x, num_train_lm$price, use = "complete.obs")
+})
 
-## Regression Tree - predict price 
+sort(cor_with_price_lm, decreasing = TRUE)
+```
+### Full correlation matrix for numeric variables
+```{r}
+cor_matrix_lm <- cor(num_train_lm, use = "complete.obs")
+round(cor_matrix_lm, 2)
+```
+### Smaller matrix for main numeric predictors
+```{r}
+main_numeric_lm <- c("price", "sqft_living", "sqft_lot", "sqft_living15",
+                     "sqft_lot15", "bathrooms", "bedrooms", "diff_yr_sale_yr_built")
+
+round(cor_matrix_lm[main_numeric_lm, main_numeric_lm], 2)
+```
+### Linear Model 1: simpler starting model
+```{r}
+lm1 <- lm(log_price ~ log_sqft_living + bedrooms + bathrooms + waterfront + view,
+          data = train)
+
+summary(lm1)
+```
+This initial model shows that log(sqft_living) is the strongest predictor of price, which matches what was seen in the earlier plots. Most variables are statistically significant, but the overall fit is moderate (R² ~ 0.50), so this model captures some of the variation but is clearly missing important factors.
+
+### Linear Model 2: fuller model with engineered variables
+```{r}
+lm2 <- lm(log_price ~ log_sqft_living + log_sqft_lot + bedrooms +
+            bathrooms + waterfront + view + zip4_class +
+            renovation_group + season + diff_yr_sale_yr_built,
+          data = train)
+
+summary(lm2)
+```
+After adding more variables, the model improves noticeably, with R² increasing to about 0.59 and a lower residual error. Variables like zip4_class and recently renovated homes seem to have meaningful effects, suggesting that location and property condition add important explanatory power beyond just size.
+
+### Linear Model 3: adding interaction for waterfront and living area
+```{r}
+lm3 <- lm(log_price ~ log_sqft_living * waterfront + log_sqft_lot +
+            bedrooms + bathrooms + view + zip4_class +
+            renovation_group + season + diff_yr_sale_yr_built,
+          data = train)
+
+summary(lm3)
+```
+Adding the interaction between waterfront and living area slightly improves the model further, both in terms of AIC and test MSE. The interaction term is significant, which suggests that the effect of living space on price is different for waterfront homes, making this model the most appropriate choice overall.
+
+### Compare linear models
+```{r}
+AIC(lm1, lm2, lm3)
+anova(lm1, lm2, lm3)
+```
+### VIF for linear models
+```{r}
+library(car)
+vif(lm1)
+vif(lm2)
+vif(lm3)
+```
+### Diagnostic plots for linear models
+```{r}
+par(mfrow = c(2, 2))
+plot(lm1)
+
+par(mfrow = c(2, 2))
+plot(lm2)
+
+par(mfrow = c(2, 2))
+plot(lm3)
+```
+### Test MSE for linear models
+```{r}
+pred_lm1 <- predict(lm1, newdata = test)
+pred_lm2 <- predict(lm2, newdata = test)
+pred_lm3 <- predict(lm3, newdata = test)
+
+mse_lm1 <- mean((test$log_price - pred_lm1)^2)
+mse_lm2 <- mean((test$log_price - pred_lm2)^2)
+mse_lm3 <- mean((test$log_price - pred_lm3)^2)
+
+lm_mse_table <- data.frame(
+  Model = c("lm1", "lm2", "lm3"),
+  Test_MSE_LogScale = c(mse_lm1, mse_lm2, mse_lm3)
+)
+
+lm_mse_table
+```
+### MSE on original dollar scale
+```{r}
+library("scales")
+pred_lm1_price <- 10^pred_lm1
+pred_lm2_price <- 10^pred_lm2
+pred_lm3_price <- 10^pred_lm3
+
+mse_lm1_dollar <- dollar(mean((test$price - pred_lm1_price)^2))
+mse_lm2_dollar <- dollar(mean((test$price - pred_lm2_price)^2))
+mse_lm3_dollar <- dollar(mean((test$price - pred_lm3_price)^2))
+
+lm_mse_table_dollar <- data.frame(
+  Model = c("lm1", "lm2", "lm3"),
+  Test_MSE_DollarScale = c(mse_lm1_dollar, mse_lm2_dollar, mse_lm3_dollar)
+)
+
+lm_mse_table_dollar
+```
+### Predicted vs actual plot for final linear model
+```{r}
+final_lm <- lm3
+
+final_lm_pred <- predict(final_lm, newdata = test)
+
+plot_df_lm <- data.frame(
+  actual = test$log_price,
+  predicted = final_lm_pred
+)
+
+ggplot(plot_df_lm, aes(x = actual, y = predicted)) +
+  geom_point(alpha = 0.3) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(title = "Predicted vs Actual log10(Price)",
+       x = "Actual log10(Price)",
+       y = "Predicted log10(Price)")
+```
+The predicted vs actual plot shows a clear positive relationship, with most points clustered around the diagonal line, which suggests the model is doing a decent job overall. However, there is some spread as prices increase, indicating that the model is slightly less accurate for higher-priced homes. Overall, the model captures the general trend well, but there is still some variability that is not fully explained.
+
+## Section 5b: Regression Tree - predict price 
+### Base Tree Modeling 
+
+```{r}
+#Prep - start here 
+set.seed(50)
+house_clean <- house
+house_clean[, c("id","yr_renovated", "date", "lat", "long", "zipcode", "diff_yr_sold_yr_reno", "sqft_above", "sqft_basement", "yr_built", "month", "zip4")] <- list(NULL)
+ 
+factorCols <- c("floors", "waterfront", "view","season","renovation_group","zip4_class")
+house_clean[factorCols] =  lapply(house_clean[factorCols], as.factor)
+sample.data<-sample.int(nrow(house_clean), floor(.50*nrow(house_clean)), replace = F)
+train = house_clean[sample.data,]
+train = as.data.frame(train)
+test = house_clean[-sample.data,]
+test = as.data.frame(test)
+```
 
 
 ##### Base Regression Tree
 
 ```{r}
+set.seed(50)
 tree_reg = tree(price~.-price,  train)
 par(mar = c(1, 1, 1, 1))
 plot(tree_reg)
@@ -784,28 +951,26 @@ summary(tree_reg)
 
 ```{r} 
 # calcuate MSE for base Reg Tree 
-
+set.seed(50)
 yhat_tree_reg =  predict(tree_reg, newdata = test[-1])
 mse_tree_reg = mean((yhat_tree_reg - test$price)^2)
-cat("MSE for Tree-Based Regression Model: ",comma(mse_tree_reg))
+cat("MSE for Tree-Based Regression Model: ",dollar(mse_tree_reg))
 ```
 
-
+Our basic tree model was able to achieve a test MSE of $58,767,698,595 right from the start with no pruning or significant alterations aside from the data cleaning steps we took. We then considered using a cross validation step to see if pruning the tree would improve performance and/or decrease complexity in the model. However, the pruning steps suggested by the cross validation process resulted in a far worse performing model in terms of MSE. The pruned version of the tree returned a test MSE of \$67,769,635,947, and will not be used going forward. 
 
 ##### Pruned Regression Tree
 
 ```{r}
 #set.seed(1)
+set.seed(50)
 cv_tree_reg = cv.tree(tree_reg)
 plot(cv_tree_reg$size, cv_tree_reg$dev, type = "b")
 ```
 
-The most complex tree is selected by cross validation. according to the text (pg 357) we can also prune using the following approach:
-
-
-
 
 ```{r}
+set.seed(50)
 tree_reg_prune = prune.tree(tree_reg, best = 5)
 plot(tree_reg_prune)
 text(tree_reg_prune, pretty =  0 )
@@ -815,6 +980,7 @@ text(tree_reg_prune, pretty =  0 )
 ###### Predictive Test
 
 ```{r}
+set.seed(50)
 yhat_tree_reg_prune =  predict(tree_reg_prune, newdata = test[-1])
 mse_tree_reg_prune = mean((yhat_tree_reg_prune - test$price)^2)
 cat("MSE for Pruned verison of Tree-Based Regresion model: ", dollar(mse_tree_reg_prune))
@@ -824,53 +990,39 @@ cat("MSE for Pruned verison of Tree-Based Regresion model: ", dollar(mse_tree_re
 ##### Bagging Regression
 
 ```{r}
+set.seed(50)
+preds <- ncol(train) - 1
 
-#set.seed(2) 
-##bagging is special case of random forest when mtry = number of predictors
-
-preds = ncol(train) -1 
-bag_reg = randomForest::randomForest(price~.-price, data=train, mtry=preds, importance=TRUE)
+bag_reg <- randomForest::randomForest(
+  price ~ .,          
+  data      = train,
+  mtry      = preds,
+  ntree     = 100,    
+  importance = TRUE   
+)
 bag_reg
 
 ```
-Note: Below is the faster version that runs better on apple silicon split cores. The results of the two models seem very similar. I am able to use this package to build the random forest model as well. I just want to confirm that this is okay to use before I implement it globally. 
-
-```{r}
-registerDoMC(cores = 4)  # experiment with this number
-preds = ncol(train) -1 
-#bag_class = randomForest::randomForest(price~.-quality, data=train, mtry=preds, importance=TRUE)
-
-bag_reg2 <- ranger(
-  price ~ .,
-  data = train,
-  importance = "permutation",
-  mtry = preds,   
-  num.threads = 4 
-)
-bag_reg2
-
-```
-
 
 ###### Predictive Test
 
-
 ```{r}
+set.seed(50)
 yhat_bag_reg = predict(bag_reg, newdata = test[-1])
 
 mse_bag_reg = mean((yhat_bag_reg - test$price)^2)
 cat("Test MSE for Bagging  Model: ",dollar(mse_bag_reg))
 ```
 
-Version 2: 
-
 
 ```{r}
-yhat_bag_reg2 = predict(bag_reg2, data  = test[-1])$predictions
-
-mse_bag_reg2 = mean((yhat_bag_reg2 - test$price)^2)
-cat("Test MSE for Bagging  Model 2: ",dollar(mse_bag_reg2))
+set.seed(50)
+randomForest::varImpPlot(bag_reg)
 ```
+
+
+
+Using a bagging model, we find a huge improvement in test MSE performance, dropping from $58,767,698,595 to \$31,886,836,086. When evaluating the most important variables, we see that on the MSE score the age of the house at time of sale (diff_yr_sale_yr_built) is the most impactful, followed closely by the grade and the home cost classification of the zip code they are in. When reviewing the node purity measure of importance, we see the grade and the square footage of the living space are the two most important variables, followed again by the age of the house at the time of sale. 
 
 
 
@@ -878,13 +1030,15 @@ cat("Test MSE for Bagging  Model 2: ",dollar(mse_bag_reg2))
 
 
 ```{r}
+set.seed(50)
 rf_reg = randomForest::randomForest(price~.-price, data=train, mtry=3, importance=TRUE)
 rf_reg
 ```
 
 
 ```{r}
-randomForest::varImpPlot(rf)
+set.seed(50)
+randomForest::varImpPlot(rf_reg)
 ```
 
 
@@ -892,34 +1046,41 @@ randomForest::varImpPlot(rf)
 
 
 ```{r}
+set.seed(50)
 yhat_rf_reg = predict(rf_reg, newdata = test[-1])
 
 mse_rf = mean((yhat_rf_reg - test$price)^2)
-cat("Test MSE for Random Forrest  Model: ",dollar(mse_rf))
+cat("Test MSE for Random Forest  Model: ",dollar(mse_rf))
 ```
 
+Next we consider the Random Forest approach for modeling the regression tree. The random forest approach seems to have marginally decreased the performance from the bagging method, as the test MSE went up from $30,628,895,512 to \$30,705,078,599. Since there is not strategic advantage to using the random forest over the bagging method, we will still say the bagging method is the best so far. 
+
+The random forest method also tells a similar story for the top 3 predictors: zip code class, age of home at time of sale, and grade are the most important for the MSE score, while square footage of living space, grade, and square footage of living space of the next 15 closest neighbors are the most important in terms of node purity. This is the first time we have seen the square footage of the neighbors become a one of the 3 most significant predictors. I suspect there could be some multicolinearity occuring between the square footage of neighbors living space and the home value class of their zip codes here, since we would expect the sale price to increase as square footage increases. Since this model has proven to be less useful than the bagging model, I am not going to spend too much time trying to address this issue. 
 
 ##### Boosting Regression
 
 ```{r}
 #set.seed(2)
+set.seed(50)
 boost_reg = gbm::gbm(price~.-price, data=train, distribution="gaussian", shrinkage = 0.1, n.trees=500)
 
 summary(boost_reg)
 ```
 
-
 ###### Predictive Test
 
 ```{r}
+set.seed(50)
 yhat_boost_reg = predict(boost_reg, newdata = test[-1])
 
 mse_boost_reg = mean((yhat_boost_reg - test$price)^2)
 cat("Test MSE for Boost  Model: ", dollar(mse_boost_reg))
 ```
+The next model we explored was the boosting model. With the boosting model we see a significant decrease in the performance of the test MSE, as the score goes from $30,628,895,512 for the bagging model, down to \$38,318,732,050 for the boosting model. For this reason, the bagging model remains our lead performer. 
 
+The most influential predictors for the boosting model appear to be square footage of living space, the house's grade, and the number of bathrooms the home has. This is the first time we have seen the number of bathrooms make an appearance as one of the top most important predictors. It is worth noting the influence score of the bathrooms is drastically lower than that of the square footage and the grade, with bathrooms having a score of 7.12, the grade having a score of 27.60, and the square footage of living space having a score of 46.81, it is very clear where the majority of the influence is coming from. 
 
-
+For the purpose of predicting the home prices, the best tree-based model is the bagging model. 
 
 # Section 6
 
@@ -958,6 +1119,10 @@ p1
 ```
 
 Given the class count between good quality vs not good quality there is a seeming in balance between good quality homes (12.5%) and not good quality homes (87.5%). This indicates we will have to use evaluation metrics like specificity and sensitivity instead of just accuracy when evaluating the classification models.
+
+
+## Single variable plots
+
 
 ### sqft_living and sqft_lot
 
@@ -1313,13 +1478,201 @@ The bubble scatter plot above shows the difference in median log(price) over bed
 
 
 # Section 7
+## Section 7a: Logistic Regression
+### Logistic Regression Setup
+```{r}
+# Made copies so the logistic section does not interfere with other sections
+train_logit <- train
+test_logit  <- test
+```
+### Create response variable: good quality home
+```{r}
+train_logit$quality <- ifelse(
+  house[sample.data, "condition"] > 3 & house[sample.data, "grade"] > 7,
+  "good_quality",
+  "not_good_quality"
+)
 
-## Logistic Regression
+test_logit$quality <- ifelse(
+  house[-sample.data, "condition"] > 3 & house[-sample.data, "grade"] > 7,
+  "good_quality",
+  "not_good_quality"
+)
 
-## Classification Tree - predict quality 
+train_logit$quality <- as.factor(train_logit$quality)
+test_logit$quality  <- as.factor(test_logit$quality)
 
+table(train_logit$quality)
+prop.table(table(train_logit$quality))
+```
+### Logistic Model 1: simpler starting model
+```{r}
+glm1 <- glm(quality ~ log10(sqft_living) + bedrooms + bathrooms +
+              waterfront + view,
+            data = train_logit,
+            family = binomial)
+
+summary(glm1)
+```
+### Logistic Model 2: fuller model
+```{r}
+glm2 <- glm(quality ~ log10(sqft_living) + log10(sqft_lot) + bedrooms +
+              bathrooms + waterfront + view + zip4_class +
+              renovation_group + season + diff_yr_sale_yr_built,
+            data = train_logit,
+            family = binomial)
+
+summary(glm2)
+```
+### Logistic Model 3: interaction model
+```{r}
+glm3 <- glm(quality ~ log10(sqft_living) * waterfront + log10(sqft_lot) +
+              bedrooms + bathrooms + view + zip4_class +
+              renovation_group + season + diff_yr_sale_yr_built,
+            data = train_logit,
+            family = binomial)
+
+summary(glm3)
+```
+### Compare logistic models
+```{r}
+AIC(glm1, glm2, glm3)
+```
+Based on AIC, glm3 performs the best among the models, suggesting that including the interaction between waterfront and living area improves the fit. Although some coefficients appear extreme, this is expected due to the interaction term, and the combined effect is more meaningful than individual coefficients. Overall, glm3 captures additional structure in the data and is chosen as the final model.
+
+### VIF for logistic models
+```{r}
+vif(glm1)
+vif(glm2)
+vif(glm3)
+```
+### Predicted probabilities
+```{r}
+prob_glm1_logit <- predict(glm1, newdata = test_logit, type = "response")
+prob_glm2_logit <- predict(glm2, newdata = test_logit, type = "response")
+prob_glm3_logit <- predict(glm3, newdata = test_logit, type = "response")
+
+head(prob_glm3_logit)
+```
+
+### Confusion matrices at threshold = 0.5
+```{r}
+pred_glm1_05_logit <- ifelse(prob_glm1_logit > 0.5, "good_quality", "not_good_quality")
+pred_glm2_05_logit <- ifelse(prob_glm2_logit > 0.5, "good_quality", "not_good_quality")
+pred_glm3_05_logit <- ifelse(prob_glm3_logit > 0.5, "good_quality", "not_good_quality")
+
+pred_glm1_05_logit <- factor(pred_glm1_05_logit, levels = levels(test_logit$quality))
+pred_glm2_05_logit <- factor(pred_glm2_05_logit, levels = levels(test_logit$quality))
+pred_glm3_05_logit <- factor(pred_glm3_05_logit, levels = levels(test_logit$quality))
+
+conf_glm1_05_logit <- table(Predicted = pred_glm1_05_logit, Actual = test_logit$quality)
+conf_glm2_05_logit <- table(Predicted = pred_glm2_05_logit, Actual = test_logit$quality)
+conf_glm3_05_logit <- table(Predicted = pred_glm3_05_logit, Actual = test_logit$quality)
+
+conf_glm1_05_logit
+conf_glm2_05_logit
+conf_glm3_05_logit
+```
+### Metrics function
+```{r}
+get_metrics_logit <- function(conf_mat) {
+  accuracy <- sum(diag(conf_mat)) / sum(conf_mat)
+  sensitivity <- conf_mat["good_quality", "good_quality"] / sum(conf_mat[, "good_quality"])
+  specificity <- conf_mat["not_good_quality", "not_good_quality"] / sum(conf_mat[, "not_good_quality"])
+  
+  data.frame(
+    Accuracy = accuracy,
+    Sensitivity = sensitivity,
+    Specificity = specificity
+  )
+}
+```
+### Metrics at threshold = 0.5
+```{r}
+metrics_glm1_05_logit <- get_metrics_logit(conf_glm1_05_logit)
+metrics_glm2_05_logit <- get_metrics_logit(conf_glm2_05_logit)
+metrics_glm3_05_logit <- get_metrics_logit(conf_glm3_05_logit)
+
+glm_metrics_05_logit <- rbind(
+  data.frame(Model = "glm1", Threshold = 0.5, metrics_glm1_05_logit),
+  data.frame(Model = "glm2", Threshold = 0.5, metrics_glm2_05_logit),
+  data.frame(Model = "glm3", Threshold = 0.5, metrics_glm3_05_logit)
+)
+
+glm_metrics_05_logit
+```
+At the default threshold of 0.5, the models have very high sensitivity but extremely low specificity, meaning they correctly identify most good quality homes but struggle to correctly classify not good quality homes. This is likely due to the strong class imbalance in the dataset.
+
+### Threshold = 0.3 comparison
+```{r}
+pred_glm1_03_logit <- ifelse(prob_glm1_logit > 0.3, "good_quality", "not_good_quality")
+pred_glm2_03_logit <- ifelse(prob_glm2_logit > 0.3, "good_quality", "not_good_quality")
+pred_glm3_03_logit <- ifelse(prob_glm3_logit > 0.3, "good_quality", "not_good_quality")
+
+pred_glm1_03_logit <- factor(pred_glm1_03_logit, levels = levels(test_logit$quality))
+pred_glm2_03_logit <- factor(pred_glm2_03_logit, levels = levels(test_logit$quality))
+pred_glm3_03_logit <- factor(pred_glm3_03_logit, levels = levels(test_logit$quality))
+
+conf_glm1_03_logit <- table(Predicted = pred_glm1_03_logit, Actual = test_logit$quality)
+conf_glm2_03_logit <- table(Predicted = pred_glm2_03_logit, Actual = test_logit$quality)
+conf_glm3_03_logit <- table(Predicted = pred_glm3_03_logit, Actual = test_logit$quality)
+
+conf_glm1_03_logit
+conf_glm2_03_logit
+conf_glm3_03_logit
+```
+### Metrics at threshold = 0.3
+```{r}
+metrics_glm1_03_logit <- get_metrics_logit(conf_glm1_03_logit)
+metrics_glm2_03_logit <- get_metrics_logit(conf_glm2_03_logit)
+metrics_glm3_03_logit <- get_metrics_logit(conf_glm3_03_logit)
+
+glm_metrics_03_logit <- rbind(
+  data.frame(Model = "glm1", Threshold = 0.3, metrics_glm1_03_logit),
+  data.frame(Model = "glm2", Threshold = 0.3, metrics_glm2_03_logit),
+  data.frame(Model = "glm3", Threshold = 0.3, metrics_glm3_03_logit)
+)
+
+glm_metrics_03_logit
+```
+Lowering the threshold to 0.3 increases sensitivity even further, but specificity becomes almost zero. This shows that while the model becomes very good at identifying good quality homes, it essentially predicts almost everything as good quality, reducing its usefulness for distinguishing between classes.
+
+### All logistic metrics together
+```{r}
+all_glm_metrics_logit <- rbind(glm_metrics_05_logit, glm_metrics_03_logit)
+all_glm_metrics_logit
+```
+### Predicted probability plot for final logistic model
+```{r}
+final_glm <- glm3
+
+final_glm_prob <- predict(final_glm, newdata = test_logit, type = "response")
+
+plot_df_glm_logit <- data.frame(
+  prob = final_glm_prob,
+  actual = test_logit$quality
+)
+
+ggplot(plot_df_glm_logit, aes(x = prob, fill = actual)) +
+  geom_histogram(bins = 30, alpha = 0.6, position = "identity") +
+  labs(title = "Predicted Probabilities from Final Logistic Model",
+       x = "Predicted Probability of Good Quality",
+       y = "Count")
+```
+The predicted probability plot shows that most observations still have high predicted probabilities, with significant overlap between the two classes. This indicates that even with the improved model, glm3 does not strongly separate good and not good quality homes, which explains the low specificity observed earlier.
+
+## Odds ratios for final logistic model
+```{r}
+exp(coef(glm3))
+```
+
+
+
+## Section 7b: Classification Tree - predict quality 
 
 ```{r}
+#setup - note the removal of condition and grade from this component to avoid multicolinearity 
+set.seed(50)
 house_clean = house
 house_clean$quality <- factor(ifelse(house_clean$condition > 3 & house_clean$grade > 7, 
                                       "good_quality", 
@@ -1335,125 +1688,106 @@ test = house_clean[-sample.data,]
 test = as.data.frame(test)
 ```
 
-
 ##### Base Classification Tree
 
 ```{r}
-
+set.seed(50)
 tree_class = tree(quality~.-quality,  train)
 par(mar = c(1, 1, 1, 1))
 plot(tree_class)
 text(tree_class, pretty = 0)
 summary(tree_class)
 ```
+```{r}
+summary(tree_class)
+```
+
 ###### Predictive Test
 
 ```{r}
+set.seed(50)
 preds = predict(tree_class, newdata = test[-15], type= "class")
 table(preds, test$quality)
 tree_class_error = 1-mean(preds==test$quality)
-cat("Error Rate for Tree-Based Classification Model: ",percent(tree_class_error))
+cat("Error Rate for Tree-Based Classification Model: ",percent(tree_class_error, accuracy = 0.01))
 
 ```
-
+Initially we see the training misclassification rate of 12%. When we perform a prediction accuracy test using new test data, we find the test error rate for the basic classification tree to also be 12%, which is a positive indicator of our models performance and alleviates concerns of over fitting. The basic tree has identified price, square footage of 15 nearest neighbors, and the age of the house at time of sale as the most important predictors in modeling the quality of the homes. 
 
 ##### Pruned Classification Tree
 
 ```{r}
+set.seed(50)
 cv_tree_class = cv.tree(tree_class, FUN = prune.misclass)
 plot(cv_tree_class$size, cv_tree_class$dev, type = "b")
 cv_tree_class
 ```
 
-Using trees of either 9 or 7 terminal nodes results in 1,291 classification errors, and using a tree with 1 terminal node results in 1,328 classification errors. So our best bet here is to use either 9 or 7 terminal nodes. For the sake of simplicity, I suggest using 7 nodes. 
-
-
-```{r}
-par(mfrow = c(1, 2))
-plot(cv_tree_class$size ,cv_tree_class$dev , type = "b")
-plot(cv_tree_class$k, cv_tree_class$dev , type = "b")
-```
-tried using this plot from the text but i am not sure how useful it is. 
-
-```{r}
-tree_class_prune = prune.tree(tree_class, best = 7)
-plot(tree_class_prune)
-text(tree_class_prune, pretty = 0 )
-```
-
-###### Predictive Test
-
-```{r}
-preds = predict(tree_class_prune, newdata = test[-15], type= "class")
-table(preds, test$quality)
-tree_class_prune_error = 1-mean(preds==test$quality)
-cat("Error Rate for Pruned Tree-Based Classification Model: ",percent(tree_class_prune_error))
-```
-It appears that pruning the tree down to 7 terminal nodes has increased the error rate from 12% to 13%
+Using trees of either 1 or 7 terminal nodes results in 1,347 classification errors. There does not appear to be any variation in the performance of the tree if we prune the nodes. For that reason, we have not pursued the pruning method any further. 
 
 ##### Bagging Classification
 
-
-
 ```{r}
-library(doMC)
-library(ranger)
-registerDoMC(cores = detectCores() - 1)  # leaves one core free
-parallel::detectCores()  # M3 Pro has 11-12, M3 Max has 14-16
-registerDoMC(cores = 4)  # experiment with this number
-preds = ncol(train[-15]) -1 
-#bag_class = randomForest::randomForest(price~.-quality, data=train, mtry=preds, importance=TRUE)
+set.seed(50)
+# original package version 
+preds <- ncol(train) - 1
 
-bag_class <- ranger(
-  quality ~ .,
-  data = train,
-  #num.trees = 100,
-  mtry = preds,   # use all predictors = bagging
-  num.threads = 4        # adjust based on your core testing
+bag_class <- randomForest::randomForest(
+  quality ~ .,          
+  data      = train,
+  mtry      = preds,
+  ntree     = 100,    
+  importance = TRUE   
 )
+bag_class
 ```
 
+```{r}
+set.seed(50)
+randomForest::varImpPlot(bag_class)
+```
 
 ###### Predictive Test
 
 ```{r}
-preds = predict(bag_class, data = test)
-table(preds$predictions, test$quality)
-bag_class_error = 1-mean(preds$predictions==test$quality)
-cat("Error Rate for Bagging Classification Model: ",percent(bag_class_error))
+set.seed(50)
+preds = predict(bag_class, newdata = test[-15], type = 'class')
+table(preds, test$quality)
+bag_class_error = 1-mean(preds==test$quality)
+cat("Error Rate for Bagging Classification Model: ",percent(bag_class_error, accuracy = 0.01))
 ```
 
-Here we see the error rate for the bagging model is down to 11% 
-
+Here we see the error rate for the bagging model is down to 10.63%. This is a strong improvement from that of the basic tree model. Here we can see the most important predictors for the decreased accuracy are the age of the home at time of sale, the price, and whether or not it was recently renovated. When looking at the change in the Gini index, we see the price, age of home at time of sale, and the square footage of the 15 nearest neighbors are the most important predictors. This seems to agree with the basic tree model on what the most important predictors are. 
 
 ##### Random Forrest Classification
 
 ```{r}
-rf_class <- ranger(
-  quality ~ .,
-  data = train,
-  #num.trees = 100,
-  #mtry = preds,   # use all predictors = bagging
-  num.threads = 4        # adjust based on your core testing
-)
+set.seed(50)
+rf_class = randomForest::randomForest(quality~., data=train, mtry=3, importance=TRUE)
+rf_class
+```
+
+```{r}
+set.seed(50)
+randomForest::varImpPlot(rf_class)
 ```
 
 ###### Predictive Test
 
 ```{r}
-preds = predict(rf_class, data = test)
-table(preds$predictions, test$quality)
-rf_class_error = 1-mean(preds$predictions==test$quality)
-cat("Error Rate for Bagging Classification Model: ",percent(rf_class_error))
+set.seed(50)
+preds = predict(rf_class, newdata = test[-15])
+table(preds, test$quality)
+rf_class_error = 1-mean(preds==test$quality)
+cat("Error Rate for Random Forest Classification Model: ",percent(rf_class_error, accuracy = 0.01))
 ```
 
-Random forrest model has brought the error rate down to 10% 
+The Random Forest training error rate is a strong 10.68%, and the test error rate is even stronger at 10.19%. This is now the best performing model for the classification task. The most important predictors identified by the random forest also seem to agree with the previous models: age at time of sale, price of home, and the square footage of the 15 closest neighbors continue to rank at the top of the most important predictors both in terms of mean decreased accuracy and the mean decresed Gini index. 
 
 ##### Boosting Classification 
 
-
 ```{r}
-
+set.seed(50)
 train <- train %>%
   mutate(quality = ifelse(quality == "good_quality", 1, 0))
 
@@ -1461,23 +1795,27 @@ test <- test %>%
   mutate(quality = ifelse(quality == "good_quality", 1, 0))
 n_trees = 500
 boost_class = gbm::gbm(quality~., data=train, distribution="bernoulli", shrinkage = 0.1, n.trees=n_trees)
-
-summary(boost_reg)
+boost_class
+summary(boost_class)
 ```
 
 ###### Predictive Test
 
 ```{r}
-preds = predict(boost_class, data = test)
-probs <- predict(boost_class, newdata = test, n.trees = n_trees, type = "response")
+set.seed(50)
+probs <- predict(boost_class, newdata = test[-15], n.trees = n_trees, type = "response")
 preds <- ifelse(probs > 0.5, 1, 0)
-table(preds, test$quality)
 
-boost_error <- 1 - mean(preds == test$quality)
-cat("Error Rate for Boosting Classification Model: ", percent(boost_error))
-#rf_class_error = 1-mean(preds$predictions==test$quality)
-#cat("Error Rate for Bagging Classification Model: ",percent(rf_class_error))
+table(Predicted = preds, Actual = test$quality)
+boost_error = 1-mean(preds == test$quality)
+
+cat("Error Rate for Boosting Classification Model: ", percent(boost_error, accuracy = 0.01))
 ```
 
-This has produced the best error rate thus far, with only 7% of predictions being classified incorrectly. 
+This has produced a very strong test error rate with only 10.64% of predictions being classified incorrectly. This is very close to the performance of the random forest method. With the boosting model, we also see the usual suspects show up as the most important predictors: price, age of home at time of sale, and the square footage of the 15 closest neighbors. 
+
+The best overall classification tree for predicting the quality of homes appears to be the random forest method, although the bagging and boosting methods both only performed marginally worse than the random forest. 
+
+
+
 
